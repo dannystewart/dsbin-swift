@@ -3,21 +3,19 @@
 build/
 DerivedData/
 
-# Swift Package Manager
+# Swift package files
 .swiftpm/
-Packages/
-Package.resolved
-
-# Xcode
 *.xcodeproj/xcuserdata/
 *.xcuserdata/
 *.xcworkspace/xcuserdata/
 **/UserInterfaceState.xcuserstate
+Packages/
 
 # Local development
-.cursor/rules
+.cursor/rules/
+.cursorindexingignore
 .DS_Store
-.specstory
+.specstory/
 *.tmp
 release/
 scripts/
