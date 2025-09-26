@@ -4,18 +4,18 @@
             "type": "lldb",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:DSSwift}",
+            "cwd": "${workspaceFolder:dsbin-swift}",
             "name": "Debug swbuilder",
-            "program": "${workspaceFolder:DSSwift}/.build/debug/swbuilder",
+            "program": "${workspaceFolder:dsbin-swift}/.build/debug/swbuilder",
             "preLaunchTask": "swift: Build Debug swbuilder"
         },
         {
             "type": "lldb",
             "request": "launch",
             "args": [],
-            "cwd": "${workspaceFolder:DSSwift}",
+            "cwd": "${workspaceFolder:dsbin-swift}",
             "name": "Release swbuilder",
-            "program": "${workspaceFolder:DSSwift}/.build/release/swbuilder",
+            "program": "${workspaceFolder:dsbin-swift}/.build/release/swbuilder",
             "preLaunchTask": "swift: Build Release swbuilder"
         }
     ]
