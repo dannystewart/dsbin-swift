@@ -225,4 +225,24 @@ struct SwiftBuilder: ParsableCommand {
 
         return nil
     }
+
+    func runApp(at appPath: String) throws {
+        let runProcess = Process()
+        runProcess.executableURL = URL(fileURLWithPath: appPath)
+        runProcess.standardInput = FileHandle.standardInput
+        runProcess.standardOutput = FileHandle.standardOutput
+        runProcess.standardError = FileHandle.standardError
+
+        try runProcess.run()
+
+        // Use DispatchSource for signal handling
+        let signalSource = DispatchSource.makeSignalSource(signal: SIGINT)
+        signalSource.setEventHandler {
+            runProcess.terminate()
+            Self.exit(withError: nil)
+        }
+        signalSource.resume()
+
+        runProcess.waitUntilExit()
+    }
 }
