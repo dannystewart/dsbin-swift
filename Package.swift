@@ -5,12 +5,17 @@ let package = Package(
     name: "DSSwift",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "swbuilder", targets: ["SwiftBuilder"])
-    ],
-    dependencies: [
-        .package(url: "https://github.com/dannystewart/PolyLog-Swift.git", branch: "main")
+        .executable(name: "swbuilder", targets: ["SwiftBuilder"]),
+        .library(
+            name: "PolyLog",
+            targets: ["PolyLog"]
+        ),
     ],
     targets: [
-        .executableTarget(name: "SwiftBuilder")
+        .target(
+            name: "PolyLog",
+            path: "Sources/PolyLog"
+        ),
+        .executableTarget(name: "SwiftBuilder"),
     ]
 )
