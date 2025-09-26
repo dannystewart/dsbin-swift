@@ -1,28 +1,42 @@
 //
 //  SwBuilder.swift
-//  DSSwift
+//  dsbin-swift
 //
 //  Created by Danny Stewart on 9/25/25.
 //
 
+import ArgumentParser
 import Foundation
 import PolyLog
 
-let logger = PolyLog()
+@main
+struct SwiftBuilder: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "swbuilder",
+        abstract: "Build and optionally run Xcode projects with automatic version bumping."
+    )
 
-struct SwiftBuilder {
-    static func main() {
+    private static let logger = PolyLog()
+
+    @Argument(help: "Path to the Xcode project directory")
+    var projectPath: String?
+
+    @Flag(name: .long, help: "Skip version bumping")
+    var skipVersion = false
+
+    @Flag(name: .customLong("run"), help: "Run the app after building")
+    var shouldRun = false
+
+    func run() throws {
         // Get project path from command line or current directory
-        let inputPath =
-            CommandLine.arguments.count > 1
-            ? CommandLine.arguments[1] : FileManager.default.currentDirectoryPath
+        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
 
         guard let project = findXcodeProject(in: inputPath) else {
-            logger.error("No Xcode project found.")
+            Self.logger.error("No Xcode project found.")
             return
         }
 
-        logger.info("Building project at: \(project)")
+        Self.logger.info("Building project at: \(project)")
 
         // Extract project name from path
         let projectName = URL(fileURLWithPath: project).deletingPathExtension().lastPathComponent
@@ -61,7 +75,7 @@ struct SwiftBuilder {
         }
     }
 
-    static func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath)
+    func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath)
         -> String?
     {
         // Look for .xcodeproj files in the given path
@@ -81,7 +95,7 @@ struct SwiftBuilder {
         return nil
     }
 
-    static func findBuiltApp(projectName: String) -> String? {
+    func findBuiltApp(projectName: String) -> String? {
         // Look in DerivedData for the built app
         let derivedDataPath = "\(NSHomeDirectory())/Library/Developer/Xcode/DerivedData"
         let fileManager = FileManager.default
@@ -104,5 +118,3 @@ struct SwiftBuilder {
         return nil
     }
 }
-
-SwiftBuilder.main()
