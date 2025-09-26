@@ -10,7 +10,7 @@ import PolyLog
 
 let logger = PolyLog()
 
-struct SwBuilder {
+struct SwiftBuilder {
     static func main() {
         // Get project path from command line or current directory
         let inputPath =
@@ -105,4 +105,4 @@ struct SwBuilder {
     }
 }
 
-SwBuilder.main()
+SwiftBuilder.main()
