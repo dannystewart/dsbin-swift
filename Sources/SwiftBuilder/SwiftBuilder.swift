@@ -16,13 +16,16 @@ struct SwiftBuilder: ParsableCommand {
         abstract: "Build and optionally run Xcode projects with automatic version bumping."
     )
 
-    private static let logger = PolyLog()
+    private static let logger = PolyLog(simple: true)
 
     @Argument(help: "Path to the Xcode project directory")
     var projectPath: String?
 
     @Flag(name: .long, help: "Skip version bumping")
     var skipVersion = false
+
+    @Flag(name: .long, help: "Build release version")
+    var release = false
 
     @Flag(name: .customLong("run"), help: "Run the app after building")
     var shouldRun = false
@@ -31,12 +34,19 @@ struct SwiftBuilder: ParsableCommand {
         // Get project path from command line or current directory
         let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
 
-        guard let project = findXcodeProject(in: inputPath) else {
-            Self.logger.error("No Xcode project found.")
+        // Check if it's an Xcode project or Swift package
+        if let project = findXcodeProject(in: inputPath) {
+            try buildXcodeProject(project: project)
+        } else if isSwiftPackage(in: inputPath) {
+            try buildSwiftPackage(in: inputPath)
+        } else {
+            Self.logger.error("Couldn't find Xcode or Swift package at path: \(inputPath)")
             return
         }
+    }
 
-        Self.logger.info("Building project at: \(project)")
+    func buildXcodeProject(project: String) throws {
+        Self.logger.info("Building Xcode project at: \(project)")
 
         // Extract project name from path
         let projectName = URL(fileURLWithPath: project).deletingPathExtension().lastPathComponent
@@ -56,11 +66,12 @@ struct SwiftBuilder: ParsableCommand {
         try? versionProcess.run()
         versionProcess.waitUntilExit()
 
-        // Build the project
+        // Build the project with appropriate configuration
+        let configuration = release ? "Release" : "Debug"
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         buildProcess.arguments = [
-            "xcodebuild", "-project", project, "-scheme", projectName, "-configuration", "Debug",
+            "xcodebuild", "-project", project, "-scheme", projectName, "-configuration", configuration,
             "build",
         ]
         try? buildProcess.run()
@@ -73,6 +84,59 @@ struct SwiftBuilder: ParsableCommand {
             runProcess.executableURL = URL(fileURLWithPath: app)
             try? runProcess.run()
         }
+    }
+
+    func buildSwiftPackage(in path: String) throws {
+        Self.logger.info("Building Swift package at: \(path)")
+
+        // Extract package name from Package.swift
+        let packageName = extractPackageName(from: path) ?? "Unknown"
+
+        // Kill existing process
+        let killProcess = Process()
+        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        killProcess.arguments = ["-f", packageName]
+        try? killProcess.run()
+
+        // Build the Swift package with appropriate configuration
+        let buildProcess = Process()
+        buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+        let buildArgs = release ? ["build", "-c", "release"] : ["build"]
+        buildProcess.arguments = buildArgs
+        buildProcess.currentDirectoryPath = path
+        try? buildProcess.run()
+        buildProcess.waitUntilExit()
+
+        // Find and run the built app
+        let appPath = findBuiltApp(projectName: packageName)
+        if let app = appPath {
+            let runProcess = Process()
+            runProcess.executableURL = URL(fileURLWithPath: app)
+            try? runProcess.run()
+        }
+    }
+
+    func isSwiftPackage(in path: String) -> Bool {
+        let packageSwiftPath = "\(path)/Package.swift"
+        return FileManager.default.fileExists(atPath: packageSwiftPath)
+    }
+
+    func extractPackageName(from path: String) -> String? {
+        let packageSwiftPath = "\(path)/Package.swift"
+        do {
+            let content = try String(contentsOfFile: packageSwiftPath, encoding: .utf8)
+            // Look for the package name in Package.swift
+            if let range = content.range(of: #"name:\s*"([^"]+)""#, options: .regularExpression) {
+                let match = String(content[range])
+                if let nameRange = match.range(of: #""([^"]+)""#, options: .regularExpression) {
+                    let name = String(match[nameRange])
+                    return String(name.dropFirst().dropLast())  // Remove quotes
+                }
+            }
+        } catch {
+            return nil
+        }
+        return nil
     }
 
     func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath)
@@ -104,10 +168,14 @@ struct SwiftBuilder: ParsableCommand {
             let contents = try fileManager.contentsOfDirectory(atPath: derivedDataPath)
             for item in contents {
                 if item.hasPrefix(projectName) {
-                    let appPath =
-                        "\(derivedDataPath)/\(item)/Build/Products/Debug/\(projectName).app/Contents/MacOS/\(projectName)"
-                    if fileManager.fileExists(atPath: appPath) {
-                        return appPath
+                    let appPaths = [
+                        "\(derivedDataPath)/\(item)/Build/Products/Debug/\(projectName).app/Contents/MacOS/\(projectName)",
+                        "\(derivedDataPath)/\(item)/Build/Products/Release/\(projectName).app/Contents/MacOS/\(projectName)",
+                    ]
+                    for buildPath in appPaths {
+                        if fileManager.fileExists(atPath: buildPath) {
+                            return buildPath
+                        }
                     }
                 }
             }
@@ -118,7 +186,9 @@ struct SwiftBuilder: ParsableCommand {
         let currentDirectory = FileManager.default.currentDirectoryPath
         let localBuildPaths = [
             "\(currentDirectory)/.build/debug/\(projectName)",
+            "\(currentDirectory)/.build/release/\(projectName)",
             "\(currentDirectory)/build/debug/\(projectName)",
+            "\(currentDirectory)/build/release/\(projectName)",
         ]
 
         for buildPath in localBuildPaths {
