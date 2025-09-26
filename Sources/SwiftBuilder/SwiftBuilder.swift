@@ -40,13 +40,13 @@ struct SwiftBuilder: ParsableCommand {
         } else if isSwiftPackage(in: inputPath) {
             try buildSwiftPackage(in: inputPath)
         } else {
-            Self.logger.error("Couldn't find Xcode or Swift package at path: \(inputPath)")
+            Self.logger.error("Couldn't find Xcode or Swift package at \(inputPath)")
             return
         }
     }
 
     func buildXcodeProject(project: String) throws {
-        Self.logger.info("Building Xcode project at: \(project)")
+        Self.logger.info("Building Xcode project at \(project)...")
 
         // Extract project name from path
         let projectName = URL(fileURLWithPath: project).deletingPathExtension().lastPathComponent
@@ -87,7 +87,7 @@ struct SwiftBuilder: ParsableCommand {
     }
 
     func buildSwiftPackage(in path: String) throws {
-        Self.logger.info("Building Swift package at: \(path)")
+        Self.logger.info("Building Swift package at \(path)...")
 
         // Extract package name from Package.swift
         let packageName = extractPackageName(from: path) ?? "Unknown"
