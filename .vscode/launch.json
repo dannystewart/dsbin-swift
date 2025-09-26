@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DSSwift}",
+            "name": "Debug swbuilder",
+            "program": "${workspaceFolder:DSSwift}/.build/debug/swbuilder",
+            "preLaunchTask": "swift: Build Debug swbuilder"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DSSwift}",
+            "name": "Release swbuilder",
+            "program": "${workspaceFolder:DSSwift}/.build/release/swbuilder",
+            "preLaunchTask": "swift: Build Release swbuilder"
+        }
+    ]
+}
