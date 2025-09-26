@@ -16,6 +16,10 @@ let package = Package(
             name: "PolyLog",
             path: "Sources/PolyLog"
         ),
-        .executableTarget(name: "SwiftBuilder"),
+        .executableTarget(
+            name: "SwiftBuilder",
+            dependencies: ["PolyLog"],
+            path: "Sources/SwiftBuilder"
+        ),
     ]
 )
