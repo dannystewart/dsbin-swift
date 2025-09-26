@@ -112,7 +112,19 @@ struct SwiftBuilder: ParsableCommand {
                 }
             }
         } catch {
-            return nil
+            // Continue to fallback
+        }
+        // Look in the local build directory for SPM builds
+        let currentDirectory = FileManager.default.currentDirectoryPath
+        let localBuildPaths = [
+            "\(currentDirectory)/.build/debug/\(projectName)",
+            "\(currentDirectory)/build/debug/\(projectName)",
+        ]
+
+        for buildPath in localBuildPaths {
+            if fileManager.fileExists(atPath: buildPath) {
+                return buildPath
+            }
         }
 
         return nil
