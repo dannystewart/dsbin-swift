@@ -13,11 +13,12 @@ let logger = PolyLog()
 struct SwBuilder {
     static func main() {
         // Get project path from command line or current directory
-        let projectPath =
-            CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : findXcodeProject()
+        let inputPath =
+            CommandLine.arguments.count > 1
+            ? CommandLine.arguments[1] : FileManager.default.currentDirectoryPath
 
-        guard let project = projectPath else {
-            logger.error("Error: No Xcode project found")
+        guard let project = findXcodeProject(in: inputPath) else {
+            logger.error("No Xcode project found.")
             return
         }
 
@@ -60,16 +61,17 @@ struct SwBuilder {
         }
     }
 
-    static func findXcodeProject() -> String? {
-        // Look for .xcodeproj files in current directory
+    static func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath)
+        -> String?
+    {
+        // Look for .xcodeproj files in the given path
         let fileManager = FileManager.default
-        let currentPath = fileManager.currentDirectoryPath
 
         do {
-            let contents = try fileManager.contentsOfDirectory(atPath: currentPath)
+            let contents = try fileManager.contentsOfDirectory(atPath: path)
             for item in contents {
                 if item.hasSuffix(".xcodeproj") {
-                    return "\(currentPath)/\(item)"
+                    return "\(path)/\(item)"
                 }
             }
         } catch {
