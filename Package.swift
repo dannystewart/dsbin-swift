@@ -11,6 +11,9 @@ let package = Package(
             targets: ["PolyLog"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.1")
+    ],
     targets: [
         .target(
             name: "PolyLog",
@@ -18,7 +21,9 @@ let package = Package(
         ),
         .executableTarget(
             name: "SwiftBuilder",
-            dependencies: ["PolyLog"],
+            dependencies: [
+                "PolyLog", .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
             path: "Sources/SwiftBuilder"
         ),
     ]
