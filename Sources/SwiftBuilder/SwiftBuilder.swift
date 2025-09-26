@@ -13,21 +13,21 @@ import PolyLog
 struct SwiftBuilder: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swbuilder",
-        abstract: "Build and optionally run Xcode projects with automatic version bumping."
+        abstract: "Build Xcode projects or Swift packages with optional version bumping."
     )
 
     private static let logger = PolyLog(simple: true)
 
-    @Argument(help: "Path to the Xcode project directory")
+    @Argument(help: "Path to directory with Xcode project or Package.swift")
     var projectPath: String?
 
-    @Flag(name: .long, help: "Skip version bumping")
-    var skipVersion = false
+    @Flag(name: .long, help: "Increment the version number.")
+    var bumpVersion = false
 
-    @Flag(name: .long, help: "Build release version")
+    @Flag(name: .long, help: "Build release version.")
     var release = false
 
-    @Flag(name: .customLong("run"), help: "Run the app after building")
+    @Flag(name: .customLong("run"), help: "Run the app after building.")
     var shouldRun = false
 
     func run() throws {
@@ -43,10 +43,22 @@ struct SwiftBuilder: ParsableCommand {
             Self.logger.error("Couldn't find Xcode or Swift package at \(inputPath)")
             return
         }
+
+        // Run the app if requested
+        if shouldRun {
+            let projectName = extractPackageName(from: inputPath) ?? "Unknown"
+            let appPath = findBuiltApp(projectName: projectName)
+            if let app = appPath {
+                let runProcess = Process()
+                runProcess.executableURL = URL(fileURLWithPath: app)
+                try? runProcess.run()
+            }
+        }
     }
 
     func buildXcodeProject(project: String) throws {
-        Self.logger.info("Building Xcode project at \(project)...")
+        let releaseType = release ? "release" : "debug"
+        Self.logger.info("Building \(releaseType) version of Xcode project at \(project)...")
 
         // Extract project name from path
         let projectName = URL(fileURLWithPath: project).deletingPathExtension().lastPathComponent
@@ -57,24 +69,32 @@ struct SwiftBuilder: ParsableCommand {
         killProcess.arguments = ["-f", projectName]
         try? killProcess.run()
 
-        // Increment build number
-        let versionProcess = Process()
-        versionProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        versionProcess.arguments = ["agvtool", "next-version", "-all"]
-        versionProcess.currentDirectoryPath =
-            URL(fileURLWithPath: project).deletingLastPathComponent().path
-        try? versionProcess.run()
-        versionProcess.waitUntilExit()
+        // Increment build number if requested
+        if bumpVersion {
+            let versionProcess = Process()
+            versionProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+            versionProcess.arguments = ["agvtool", "next-version", "-all"]
+            versionProcess.currentDirectoryPath =
+                URL(fileURLWithPath: project).deletingLastPathComponent().path
+            try? versionProcess.run()
+            versionProcess.waitUntilExit()
+        }
 
         // Build the project with appropriate configuration
         let configuration = release ? "Release" : "Debug"
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         buildProcess.arguments = [
-            "xcodebuild", "-project", project, "-scheme", projectName, "-configuration", configuration,
+            "xcodebuild", "-project", project, "-scheme", projectName, "-configuration",
+            configuration,
             "build",
         ]
-        try? buildProcess.run()
+        do {
+            try buildProcess.run()
+        } catch {
+            Self.logger.error("Build failed: \(error)")
+            throw error
+        }
         buildProcess.waitUntilExit()
 
         // Find and run the built app
@@ -87,7 +107,8 @@ struct SwiftBuilder: ParsableCommand {
     }
 
     func buildSwiftPackage(in path: String) throws {
-        Self.logger.info("Building Swift package at \(path)...")
+        let releaseType = release ? "release" : "debug"
+        Self.logger.info("Building \(releaseType) version of Swift package at \(path)...")
 
         // Extract package name from Package.swift
         let packageName = extractPackageName(from: path) ?? "Unknown"
@@ -125,12 +146,17 @@ struct SwiftBuilder: ParsableCommand {
         let packageSwiftPath = "\(path)/Package.swift"
         do {
             let content = try String(contentsOfFile: packageSwiftPath, encoding: .utf8)
-            // Look for the package name in Package.swift
-            if let range = content.range(of: #"name:\s*"([^"]+)""#, options: .regularExpression) {
-                let match = String(content[range])
-                if let nameRange = match.range(of: #""([^"]+)""#, options: .regularExpression) {
-                    let name = String(match[nameRange])
-                    return String(name.dropFirst().dropLast())  // Remove quotes
+
+            // Create the regex pattern
+            let pattern = #"name:\s*"([^"]+)""#
+            let regex = try NSRegularExpression(pattern: pattern)
+
+            // Find the first match
+            let range = NSRange(content.startIndex..., in: content)
+            if let match = regex.firstMatch(in: content, range: range) {
+                // Extract the captured group
+                if let nameRange = Range(match.range(at: 1), in: content) {
+                    return String(content[nameRange])
                 }
             }
         } catch {
