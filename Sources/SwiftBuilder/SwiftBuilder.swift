@@ -56,6 +56,9 @@ struct SwiftBuilder: ParsableCommand {
         }
     }
 
+    /// Builds an Xcode project.
+    ///
+    /// - Parameter project: The path to the Xcode project.
     func buildXcodeProject(project: String) throws {
         let releaseType = release ? "release" : "debug"
         Self.logger.info("Building \(releaseType) version of Xcode project at \(project)...")
@@ -106,6 +109,9 @@ struct SwiftBuilder: ParsableCommand {
         }
     }
 
+    /// Builds a Swift package.
+    ///
+    /// - Parameter path: The path to the Swift package.
     func buildSwiftPackage(in path: String) throws {
         let releaseType = release ? "release" : "debug"
         Self.logger.info("Building \(releaseType) version of Swift package at \(path)...")
@@ -137,11 +143,19 @@ struct SwiftBuilder: ParsableCommand {
         }
     }
 
+    /// Checks if a path is a Swift package.
+    ///
+    /// - Parameter path: The path to check.
+    /// - Returns: True if the path is a Swift package, false otherwise.
     func isSwiftPackage(in path: String) -> Bool {
         let packageSwiftPath = "\(path)/Package.swift"
         return FileManager.default.fileExists(atPath: packageSwiftPath)
     }
 
+    /// Extracts the name of a Swift package from a path.
+    ///
+    /// - Parameter path: The path to extract the package name from.
+    /// - Returns: The name of the Swift package.
     func extractPackageName(from path: String) -> String? {
         let packageSwiftPath = "\(path)/Package.swift"
         do {
@@ -165,6 +179,10 @@ struct SwiftBuilder: ParsableCommand {
         return nil
     }
 
+    /// Finds an Xcode project in a path.
+    ///
+    /// - Parameter path: The path to find the Xcode project in.
+    /// - Returns: The path to the Xcode project.
     func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath)
         -> String?
     {
@@ -185,6 +203,10 @@ struct SwiftBuilder: ParsableCommand {
         return nil
     }
 
+    /// Finds a built app in the DerivedData directory.
+    ///
+    /// - Parameter projectName: The name of the project.
+    /// - Returns: The path to the built app.
     func findBuiltApp(projectName: String) -> String? {
         // Look in DerivedData for the built app
         let derivedDataPath = "\(NSHomeDirectory())/Library/Developer/Xcode/DerivedData"
@@ -226,6 +248,9 @@ struct SwiftBuilder: ParsableCommand {
         return nil
     }
 
+    /// Runs an app at a given path.
+    ///
+    /// - Parameter appPath: The path to the app to run.
     func runApp(at appPath: String) throws {
         let runProcess = Process()
         runProcess.executableURL = URL(fileURLWithPath: appPath)

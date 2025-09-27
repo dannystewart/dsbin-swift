@@ -38,6 +38,13 @@ struct SwiftCompare: ParsableCommand {
         displayResults(result, title1: title1, title2: title2)
     }
 
+    /// Compares two lists and returns the common and unique elements.
+    ///
+    /// - Parameters:
+    ///   - list1:         The first list to compare.
+    ///   - list2:         The second list to compare.
+    ///   - caseSensitive: Whether to compare the lists case-sensitively.
+    /// - Returns: A ComparisonResult struct containing the common and unique elements.
     func compareLists(_ list1: [String], _ list2: [String], caseSensitive: Bool) -> ComparisonResult
     {
         let set1 = Set(list1.map { caseSensitive ? $0 : $0.lowercased() })
@@ -51,12 +58,22 @@ struct SwiftCompare: ParsableCommand {
             common: Array(common), unique1: Array(unique1), unique2: Array(unique2))
     }
 
+    /// Struct containing the common and unique elements of two lists.
+    ///
+    /// - Parameters:
+    ///   - common: The common elements of the two lists.
+    ///   - unique1: The unique elements of the first list.
+    ///   - unique2: The unique elements of the second list.
     struct ComparisonResult {
         let common: [String]
         let unique1: [String]
         let unique2: [String]
     }
 
+    /// Gets the title of the list from the user.
+    ///
+    /// - Parameter defaultTitle: The default title to use if the user presses Enter.
+    /// - Returns: The title of the list.
     func getTitle(_ defaultTitle: String) -> String {
         Text.printColor(
             "Enter a title for the \(defaultTitle) list (or press Enter to skip): ", .yellow,
@@ -67,6 +84,10 @@ struct SwiftCompare: ParsableCommand {
         return defaultTitle
     }
 
+    /// Gets the list from the user.
+    ///
+    /// - Parameter title: The title of the list.
+    /// - Returns: The list.
     func getList(title: String) -> [String] {
         Text.printColor("\nPaste the \(title) list (type '.' and press Enter to finish):", .green)
         var items: [String] = []
@@ -81,6 +102,12 @@ struct SwiftCompare: ParsableCommand {
         return items
     }
 
+    /// Displays the results of the comparison.
+    ///
+    /// - Parameters:
+    ///   - result: The result of the comparison.
+    ///   - title1: The title of the first list.
+    ///   - title2: The title of the second list.
     func displayResults(_ result: ComparisonResult, title1: String, title2: String) {
         Text.printColor("\n=== Results ===", .blue)
 
