@@ -16,8 +16,8 @@ let package = Package(
         .executableTarget(
             name: "SwiftBuilder",
             dependencies: [
-                .product(name: "PolyLog", package: "polykit-swift"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "PolyLog", package: "polykit-swift"),
             ],
             path: "Sources/SwiftBuilder"
         ),
