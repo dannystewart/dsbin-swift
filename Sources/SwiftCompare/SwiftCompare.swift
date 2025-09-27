@@ -38,8 +38,7 @@ struct SwiftCompare: ParsableCommand {
     ///   - list2:         The second list to compare.
     ///   - caseSensitive: Whether to compare the lists case-sensitively.
     /// - Returns: A ComparisonResult struct containing the common and unique elements.
-    func compareLists(_ list1: [String], _ list2: [String], caseSensitive: Bool) -> ComparisonResult
-    {
+    func compareLists(_ list1: [String], _ list2: [String], caseSensitive: Bool) -> ComparisonResult {
         let set1 = Set(list1.map { caseSensitive ? $0 : $0.lowercased() })
         let set2 = Set(list2.map { caseSensitive ? $0 : $0.lowercased() })
 
@@ -48,7 +47,8 @@ struct SwiftCompare: ParsableCommand {
         let unique2 = set2.subtracting(set1)
 
         return ComparisonResult(
-            common: Array(common), unique1: Array(unique1), unique2: Array(unique2))
+            common: Array(common), unique1: Array(unique1), unique2: Array(unique2)
+        )
     }
 
     /// Struct containing the common and unique elements of two lists.
@@ -70,7 +70,8 @@ struct SwiftCompare: ParsableCommand {
     func getTitle(_ defaultTitle: String) -> String {
         Text.printColor(
             "Enter a title for the \(defaultTitle) list (or press Enter to skip): ", .yellow,
-            terminator: "")
+            terminator: ""
+        )
         if let input = readLine(), !input.isEmpty {
             return input
         }
