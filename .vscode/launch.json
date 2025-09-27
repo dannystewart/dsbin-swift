@@ -17,6 +17,24 @@
             "name": "Release swbuilder",
             "program": "${workspaceFolder:dsbin-swift}/.build/release/swbuilder",
             "preLaunchTask": "swift: Build Release swbuilder"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:dsbin-swift}",
+            "name": "Debug swcompare",
+            "program": "${workspaceFolder:dsbin-swift}/.build/debug/swcompare",
+            "preLaunchTask": "swift: Build Debug swcompare"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:dsbin-swift}",
+            "name": "Release swcompare",
+            "program": "${workspaceFolder:dsbin-swift}/.build/release/swcompare",
+            "preLaunchTask": "swift: Build Release swcompare"
         }
     ]
 }
