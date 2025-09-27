@@ -176,18 +176,14 @@ struct SwiftBuilder: ParsableCommand {
     ///
     /// - Parameter path: The path to find the Xcode project in.
     /// - Returns: The path to the Xcode project.
-    func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath)
-        -> String?
-    {
+    func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath) -> String? {
         // Look for .xcodeproj files in the given path
         let fileManager = FileManager.default
 
         do {
             let contents = try fileManager.contentsOfDirectory(atPath: path)
-            for item in contents {
-                if item.hasSuffix(".xcodeproj") {
-                    return "\(path)/\(item)"
-                }
+            for item in contents where item.hasSuffix(".xcodeproj") {
+                return "\(path)/\(item)"
             }
         } catch {
             return nil
@@ -207,17 +203,13 @@ struct SwiftBuilder: ParsableCommand {
 
         do {
             let contents = try fileManager.contentsOfDirectory(atPath: derivedDataPath)
-            for item in contents {
-                if item.hasPrefix(projectName) {
-                    let appPaths = [
-                        "\(derivedDataPath)/\(item)/Build/Products/Debug/\(projectName).app/Contents/MacOS/\(projectName)",
-                        "\(derivedDataPath)/\(item)/Build/Products/Release/\(projectName).app/Contents/MacOS/\(projectName)",
-                    ]
-                    for buildPath in appPaths {
-                        if fileManager.fileExists(atPath: buildPath) {
-                            return buildPath
-                        }
-                    }
+            for item in contents where item.hasPrefix(projectName) {
+                let appPaths = [
+                    "\(derivedDataPath)/\(item)/Build/Products/Debug/\(projectName).app/Contents/MacOS/\(projectName)",
+                    "\(derivedDataPath)/\(item)/Build/Products/Release/\(projectName).app/Contents/MacOS/\(projectName)",
+                ]
+                for buildPath in appPaths where fileManager.fileExists(atPath: buildPath) {
+                    return buildPath
                 }
             }
         } catch {
@@ -232,10 +224,8 @@ struct SwiftBuilder: ParsableCommand {
             "\(currentDirectory)/build/release/\(projectName)",
         ]
 
-        for buildPath in localBuildPaths {
-            if fileManager.fileExists(atPath: buildPath) {
-                return buildPath
-            }
+        for buildPath in localBuildPaths where fileManager.fileExists(atPath: buildPath) {
+            return buildPath
         }
 
         return nil
