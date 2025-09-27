@@ -5,7 +5,8 @@ let package = Package(
     name: "dsbin-swift",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "swbuilder", targets: ["SwiftBuilder"])
+        .executable(name: "swbuilder", targets: ["SwiftBuilder"]),
+        .executable(name: "swcompare", targets: ["SwiftCompare"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.1"),
@@ -19,6 +20,14 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
             path: "Sources/SwiftBuilder"
-        )
+        ),
+        .executableTarget(
+            name: "SwiftCompare",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "PolyText", package: "polykit-swift"),
+            ],
+            path: "Sources/SwiftCompare"
+        ),
     ]
 )

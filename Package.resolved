@@ -1,5 +1,5 @@
 {
-  "originHash" : "d5ab1c184f8c90b50fe35130a53672112bfa4644989084dfb9fa992e7e2ed53a",
+  "originHash" : "8e2316e5f8506c040562c1bb2f55f4d56dc3029e0dd64ea71097a6dbebe19e56",
   "pins" : [
     {
       "identity" : "polykit-swift",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/dannystewart/polykit-swift.git",
       "state" : {
         "branch" : "main",
-        "revision" : "58eba75c2f62df5db6de55f4037421a42e76e3e4"
+        "revision" : "35e23c2ce6157e98001234454f42d6bf8bf7a5cd"
       }
     },
     {
