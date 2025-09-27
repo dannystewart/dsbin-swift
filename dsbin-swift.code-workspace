@@ -44,5 +44,63 @@
         "swift.buildPath": "./.build",
         "swift.sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
         "swift.swiftEnvironmentVariables": {},
+    },
+    "launch": {
+        "configurations": [
+            {
+                "type": "swift",
+                "request": "launch",
+                "args": [],
+                "cwd": "${workspaceFolder:dsbin-swift}",
+                "name": "Debug swbuilder (dsbin-swift)",
+                "program": "${workspaceFolder:dsbin-swift}/.build/debug/swbuilder",
+                "preLaunchTask": "swift: Build Debug swbuilder (dsbin-swift)"
+            },
+            {
+                "type": "swift",
+                "request": "launch",
+                "args": [],
+                "cwd": "${workspaceFolder:dsbin-swift}",
+                "name": "Release swbuilder (dsbin-swift)",
+                "program": "${workspaceFolder:dsbin-swift}/.build/release/swbuilder",
+                "preLaunchTask": "swift: Build Release swbuilder (dsbin-swift)"
+            },
+            {
+                "type": "swift",
+                "request": "launch",
+                "args": [],
+                "cwd": "${workspaceFolder:dsbin-swift}",
+                "name": "Debug swcompare (dsbin-swift)",
+                "program": "${workspaceFolder:dsbin-swift}/.build/debug/swcompare",
+                "preLaunchTask": "swift: Build Debug swcompare (dsbin-swift)"
+            },
+            {
+                "type": "swift",
+                "request": "launch",
+                "args": [],
+                "cwd": "${workspaceFolder:dsbin-swift}",
+                "name": "Release swcompare (dsbin-swift)",
+                "program": "${workspaceFolder:dsbin-swift}/.build/release/swcompare",
+                "preLaunchTask": "swift: Build Release swcompare (dsbin-swift)"
+            },
+            {
+                "type": "swift",
+                "request": "launch",
+                "args": [],
+                "cwd": "${workspaceFolder:polykit-swift}",
+                "name": "Debug walkingman (polykit-swift)",
+                "program": "${workspaceFolder:polykit-swift}/.build/debug/walkingman",
+                "preLaunchTask": "swift: Build Debug walkingman (polykit-swift)"
+            },
+            {
+                "type": "swift",
+                "request": "launch",
+                "args": [],
+                "cwd": "${workspaceFolder:polykit-swift}",
+                "name": "Release walkingman (polykit-swift)",
+                "program": "${workspaceFolder:polykit-swift}/.build/release/walkingman",
+                "preLaunchTask": "swift: Build Release walkingman (polykit-swift)"
+            }
+        ]
     }
 }
