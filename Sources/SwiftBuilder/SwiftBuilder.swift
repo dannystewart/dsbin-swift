@@ -1,10 +1,3 @@
-//
-//  SwiftBuilder.swift
-//  dsbin-swift
-//
-//  Created by Danny Stewart on 9/25/25.
-//
-
 import ArgumentParser
 import Foundation
 import PolyLog

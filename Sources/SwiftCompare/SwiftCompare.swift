@@ -1,10 +1,3 @@
-//
-//  SwiftCompare.swift
-//  dsbin-swift
-//
-//  Created by Danny Stewart on 9/26/25.
-//
-
 import ArgumentParser
 import Foundation
 import PolyText
