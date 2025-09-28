@@ -105,21 +105,18 @@ extension SwiftBuilder {
     }
 
     /// The error type given when building projects.
-    enum BuildError: Error, LocalizedError {
+    enum BuildError: LoggableError {
         case invalidProject(String)
         case buildFailed(String)
 
-        var errorDescription: String? {
+        var logMessage: String {
             switch self {
-            case let .invalidProject(message): return message
-            case let .buildFailed(message): return message
+            case let .invalidProject(msg): return msg
+            case let .buildFailed(msg): return msg
             }
         }
 
-        func logAndThrow(warning: Bool = false) -> Never {
-            if warning { SwiftBuilder.logger.warning(localizedDescription) } else { SwiftBuilder.logger.error(localizedDescription) }
-            Foundation.exit(1)
-        }
+        var isWarning: Bool { false }
     }
 
     /// Determines the type of project at a given path (either Xcode or Swift).
@@ -141,16 +138,12 @@ extension SwiftBuilder {
         let packageSwiftPath = "\(path)/Package.swift"
         if fileManager.fileExists(atPath: packageSwiftPath) {
             guard let packageName = extractPackageName(from: path) else {
-                BuildError
-                    .invalidProject("Found Package.swift but couldn't extract package name")
-                    .logAndThrow()
+                Self.logger.logAndExit(BuildError.invalidProject("Found Package.swift but couldn't extract package name"))
             }
             return .swiftPackage(path: path, name: packageName)
         }
 
-        BuildError
-            .invalidProject("No Xcode project or Package.swift found at \(path)")
-            .logAndThrow()
+        Self.logger.logAndExit(BuildError.invalidProject("No Xcode project or Package.swift found at \(path)"))
     }
 
     /// Builds a project for development.
@@ -201,11 +194,11 @@ extension SwiftBuilder {
         case let .xcodeProject(path, name):
             try archiveXcodeProject(projectPath: path, projectName: name, version: version)
         case .swiftPackage:
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed(
                     "Archiving is not supported for Swift packages. Use 'swift build -c release' instead."
                 )
-                .logAndThrow()
+            )
         }
     }
 
@@ -220,11 +213,11 @@ extension SwiftBuilder {
         case let .xcodeProject(_, name):
             try prepareXcodeProjectRelease(projectName: name, version: version)
         case .swiftPackage:
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed(
                     "Release preparation is not supported for Swift packages. Only Xcode projects can be packaged."
                 )
-                .logAndThrow()
+            )
         }
     }
 
@@ -245,11 +238,11 @@ extension SwiftBuilder {
         // Check if the app exists in Downloads
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: appPath) else {
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed(
                     "App not found at \(appPath). Please ensure the app is exported to Downloads first."
                 )
-                .logAndThrow()
+            )
         }
 
         // Create output directory if needed
@@ -302,9 +295,9 @@ extension SwiftBuilder {
         hdiutilProcess.waitUntilExit()
 
         guard hdiutilProcess.terminationStatus == 0 else {
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed("DMG creation failed with exit code \(hdiutilProcess.terminationStatus)")
-                .logAndThrow()
+            )
         }
     }
 
@@ -327,9 +320,9 @@ extension SwiftBuilder {
         dittoProcess.waitUntilExit()
 
         guard dittoProcess.terminationStatus == 0 else {
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed("ZIP creation failed with exit code \(dittoProcess.terminationStatus)")
-                .logAndThrow()
+            )
         }
     }
 
@@ -357,9 +350,9 @@ extension SwiftBuilder {
         buildProcess.waitUntilExit()
 
         guard buildProcess.terminationStatus == 0 else {
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed("Xcode build failed with exit code \(buildProcess.terminationStatus)")
-                .logAndThrow()
+            )
         }
 
         Self.logger.info("Build completed successfully!")
@@ -387,9 +380,9 @@ extension SwiftBuilder {
         buildProcess.waitUntilExit()
 
         guard buildProcess.terminationStatus == 0 else {
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed("Swift build failed with exit code \(buildProcess.terminationStatus)")
-                .logAndThrow()
+            )
         }
 
         Self.logger.info("Build completed successfully!")
@@ -424,9 +417,9 @@ extension SwiftBuilder {
         archiveProcess.waitUntilExit()
 
         guard archiveProcess.terminationStatus == 0 else {
-            BuildError
+            Self.logger.logAndExit(BuildError
                 .buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)")
-                .logAndThrow()
+            )
         }
 
         Self.logger.info("Archive complete! Now use Xcode Organizer to validate and distribute.")
@@ -488,7 +481,7 @@ extension SwiftBuilder {
         case .xcodeProject:
             // Xcode projects typically have one main executable
             guard let appPath = findBuiltApp(projectName: projectName) else {
-                BuildError.buildFailed("Could not find built app for \(projectName)").logAndThrow()
+                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app for \(projectName)"))
             }
 
             Self.logger.info("Running app: \(appPath)")
@@ -507,12 +500,12 @@ extension SwiftBuilder {
 
             switch executables.count {
             case 0:
-                BuildError.buildFailed("No executable targets found in Swift package").logAndThrow()
+                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package"))
             case 1:
                 // If user specified a target, validate it exists; otherwise use the single target
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
-                    BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))").logAndThrow()
+                    Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                 }
                 Self.logger.info("Running Swift package executable: \(target)")
                 try runSwiftPackageTarget(at: path, target: target)
@@ -523,14 +516,14 @@ extension SwiftBuilder {
                         Self.logger.info("Running Swift package executable: \(specifiedTarget)")
                         try runSwiftPackageTarget(at: path, target: specifiedTarget)
                     } else {
-                        BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))").logAndThrow()
+                        Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                     }
                 } else {
                     let executableList = executables.joined(separator: ", ")
-                    BuildError.buildFailed(
+                    Self.logger.logAndExit(BuildError.buildFailed(
                         "Multiple executables found:\n \(executableList) " +
                             "\n\nPlease specify which to run: swbuilder --run <executable-name>"
-                    ).logAndThrow(warning: true)
+                    ))
                 }
             }
         }
@@ -600,7 +593,7 @@ extension SwiftBuilder {
 
             return executables
         } catch {
-            BuildError.buildFailed("Could not read Package.swift: \(error)").logAndThrow()
+            Self.logger.logAndExit(BuildError.buildFailed("Could not read Package.swift: \(error)"))
         }
     }
 
