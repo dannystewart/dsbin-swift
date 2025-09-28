@@ -23,6 +23,9 @@ struct SwiftBuilder: ParsableCommand {
     @Option(name: .long, help: "Archive for release with specified version (e.g., 1.2.3).")
     var release: String?
 
+    @Option(name: .long, help: "Prepare release with DMG and ZIP packages for specified version (e.g., 1.2.3).")
+    var prepare: String?
+
     /// The type of project, either an Xcode project or a Swift package.
     enum ProjectType {
         case xcodeProject(path: String, name: String)
@@ -42,8 +45,7 @@ struct SwiftBuilder: ParsableCommand {
         }
 
         func logAndThrow(warning: Bool = false) -> Never {
-            if warning { SwiftBuilder.logger.warning(localizedDescription) }
-            else { SwiftBuilder.logger.error(localizedDescription) }
+            if warning { SwiftBuilder.logger.warning(localizedDescription) } else { SwiftBuilder.logger.error(localizedDescription) }
             Foundation.exit(1)
         }
     }
@@ -92,6 +94,15 @@ struct SwiftBuilder: ParsableCommand {
             }
         }
 
+        // Validate prepare version format if provided
+        if let version = prepare {
+            let versionRegex = try NSRegularExpression(pattern: #"^\d+\.\d+(\.\d+)?$"#)
+            let range = NSRange(version.startIndex..., in: version)
+            guard versionRegex.firstMatch(in: version, range: range) != nil else {
+                throw ValidationError("Version must be in format x.y or x.y.z (e.g., 1.2.3)")
+            }
+        }
+
         // Can't use both run and restart
         if shouldRun, restart {
             throw ValidationError("Cannot specify both --run and --restart")
@@ -108,6 +119,8 @@ struct SwiftBuilder: ParsableCommand {
         // Handle the operation based on flags
         if let version = release {
             try archiveForRelease(projectType: projectType, version: version)
+        } else if let version = prepare {
+            try prepareReleaseForUpload(projectType: projectType, version: version)
         } else {
             try buildForDevelopment(projectType: projectType)
         }
@@ -130,9 +143,9 @@ struct SwiftBuilder: ParsableCommand {
         // Build the project
         switch projectType {
         case let .xcodeProject(path, name):
-            try buildXcodeProjectDebug(projectPath: path, projectName: name)
+            try buildXcodeProject(projectPath: path, projectName: name)
         case let .swiftPackage(path, name):
-            try buildSwiftPackageDebug(packagePath: path, packageName: name)
+            try buildSwiftPackage(packagePath: path, packageName: name)
         }
 
         // Run if requested
@@ -145,7 +158,8 @@ struct SwiftBuilder: ParsableCommand {
         }
     }
 
-    /// Archives a project for release.
+    /// Archives a project for release. This prepares a project to be validated and distributed. Note that
+    /// actual validation and distribution must still be done within the Xcode Organizer.
     ///
     /// - Parameters:
     ///   - projectType: The type of project to archive.
@@ -164,13 +178,138 @@ struct SwiftBuilder: ParsableCommand {
         }
     }
 
-    /// Builds a Xcode project in debug mode.
+    /// Prepares release packages (DMG and ZIP) from an archived app.
+    ///
+    /// - Parameters:
+    ///   - projectType: The type of project to prepare.
+    ///   - version: The version for the release packages.
+    /// - Throws: An error if the packages cannot be created.
+    func prepareReleaseForUpload(projectType: ProjectType, version: String) throws {
+        switch projectType {
+        case let .xcodeProject(_, name):
+            try prepareXcodeProjectRelease(projectName: name, version: version)
+        case .swiftPackage:
+            BuildError
+                .buildFailed(
+                    "Release preparation is not supported for Swift packages. Only Xcode projects can be packaged."
+                )
+                .logAndThrow()
+        }
+    }
+
+    /// Prepares DMG and ZIP packages for an Xcode project.
+    ///
+    /// - Parameters:
+    ///   - projectName: The name of the project.
+    ///   - version: The version for the packages.
+    /// - Throws: An error if the packages cannot be created.
+    func prepareXcodeProjectRelease(projectName: String, version: String) throws {
+        Self.logger.info("Preparing release packages for \(projectName) version \(version)")
+
+        // Define paths
+        let homeDirectory = NSHomeDirectory()
+        let appPath = "\(homeDirectory)/Downloads/\(projectName).app"
+        let outputPath = "\(homeDirectory)/Developer/\(projectName)/release"
+
+        // Check if the app exists in Downloads
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: appPath) else {
+            BuildError
+                .buildFailed(
+                    "App not found at \(appPath). Please ensure the app is exported to Downloads first."
+                )
+                .logAndThrow()
+        }
+
+        // Create output directory if needed
+        try fileManager.createDirectory(atPath: outputPath, withIntermediateDirectories: true)
+
+        // Create DMG
+        Self.logger.info("Creating DMG package...")
+        try createDMG(
+            appPath: appPath,
+            outputPath: "\(outputPath)/\(projectName)-\(version).dmg",
+            volumeName: projectName
+        )
+
+        // Create ZIP
+        Self.logger.info("Creating ZIP package...")
+        try createZIP(
+            appPath: appPath,
+            outputPath: "\(outputPath)/\(projectName)-\(version).zip"
+        )
+
+        // Open the releases folder
+        Self.logger.info("Opening release folder...")
+        let openProcess = Process()
+        openProcess.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        openProcess.arguments = [outputPath]
+        try openProcess.run()
+
+        Self.logger.info("Release packages created successfully at \(outputPath)")
+    }
+
+    /// Creates a DMG package from an app.
+    ///
+    /// - Parameters:
+    ///   - appPath: The path to the .app bundle.
+    ///   - outputPath: The path where the DMG should be created.
+    ///   - volumeName: The name for the DMG volume.
+    /// - Throws: An error if the DMG cannot be created.
+    func createDMG(appPath: String, outputPath: String, volumeName: String) throws {
+        let hdiutilProcess = Process()
+        hdiutilProcess.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+        hdiutilProcess.arguments = [
+            "create",
+            "-volname", volumeName,
+            "-srcfolder", appPath,
+            "-ov",
+            "-format", "UDZO",
+            outputPath,
+        ]
+
+        try hdiutilProcess.run()
+        hdiutilProcess.waitUntilExit()
+
+        guard hdiutilProcess.terminationStatus == 0 else {
+            BuildError
+                .buildFailed("DMG creation failed with exit code \(hdiutilProcess.terminationStatus)")
+                .logAndThrow()
+        }
+    }
+
+    /// Creates a ZIP package from an app.
+    ///
+    /// - Parameters:
+    ///   - appPath: The path to the .app bundle.
+    ///   - outputPath: The path where the ZIP should be created.
+    /// - Throws: An error if the ZIP cannot be created.
+    func createZIP(appPath: String, outputPath: String) throws {
+        let dittoProcess = Process()
+        dittoProcess.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
+        dittoProcess.arguments = [
+            "-c", "-k", "--sequesterRsrc",
+            appPath,
+            outputPath,
+        ]
+
+        try dittoProcess.run()
+        dittoProcess.waitUntilExit()
+
+        guard dittoProcess.terminationStatus == 0 else {
+            BuildError
+                .buildFailed("ZIP creation failed with exit code \(dittoProcess.terminationStatus)")
+                .logAndThrow()
+        }
+    }
+
+    /// Builds an Xcode project.
     ///
     /// - Parameters:
     ///   - projectPath: The path to the Xcode project.
     ///   - projectName: The name of the Xcode project.
     /// - Throws: An error if the Xcode project cannot be built.
-    func buildXcodeProjectDebug(projectPath: String, projectName: String) throws {
+    func buildXcodeProject(projectPath: String, projectName: String) throws {
         Self.logger.info("Building Xcode project: \(projectName)")
 
         let buildProcess = Process()
@@ -196,13 +335,13 @@ struct SwiftBuilder: ParsableCommand {
         Self.logger.info("Build completed successfully")
     }
 
-    /// Builds a Swift package in debug mode.
+    /// Builds a Swift package.
     ///
     /// - Parameters:
     ///   - packagePath: The path to the Swift package.
     ///   - packageName: The name of the Swift package.
     /// - Throws: An error if the Swift package cannot be built.
-    func buildSwiftPackageDebug(packagePath: String, packageName: String) throws {
+    func buildSwiftPackage(packagePath: String, packageName: String) throws {
         Self.logger.info("Building Swift package: \(packageName)")
 
         let buildProcess = Process()
