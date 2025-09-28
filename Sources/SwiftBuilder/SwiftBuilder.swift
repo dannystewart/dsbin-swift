@@ -6,26 +6,98 @@ import PolyLog
 struct SwiftBuilder: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swbuilder",
-        abstract: "Build Xcode projects or Swift packages with optional running or archiving."
+        abstract: "Build Xcode projects or Swift packages with optional running or archiving.",
+        subcommands: [Build.self, Run.self, Archive.self, Prepare.self]
     )
 
     private static let logger = PolyLog(simple: true)
+}
+
+// MARK: Subcommands
+
+struct Build: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "build",
+        abstract: "Build the project."
+    )
 
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
 
-    @Flag(name: .customLong("run"), help: "Run the app after building.")
-    var shouldRun = false
+    func run() throws {
+        let builder = SwiftBuilder()
+        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
+        let projectType = try builder.determineProjectType(at: inputPath)
+        try builder.buildForDevelopment(projectType: projectType)
+    }
+}
+
+struct Run: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "run",
+        abstract: "Build and run the project."
+    )
+
+    @Argument(help: "Path to directory with Xcode project or Package.swift.")
+    var projectPath: String?
+
+    @Option(name: .shortAndLong, help: "Target name for Swift packages with multiple executables.")
+    var target: String?
 
     @Flag(name: .long, help: "Kill existing process, build, then run.")
     var restart = false
 
-    @Option(name: .long, help: "Archive for release with specified version (e.g., 1.2.3).")
-    var release: String?
+    func run() throws {
+        let builder = SwiftBuilder()
+        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
+        let projectType = try builder.determineProjectType(at: inputPath)
+        try builder.buildForDevelopment(projectType: projectType, shouldRun: true, targetName: target, restart: restart)
+    }
+}
 
-    @Option(name: .long, help: "Prepare release with DMG and ZIP packages for specified version (e.g., 1.2.3).")
-    var prepare: String?
+struct Archive: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "archive",
+        abstract: "Archive the project for release."
+    )
 
+    @Argument(help: "Path to directory with Xcode project or Package.swift.")
+    var projectPath: String?
+
+    @Argument(help: "Version for the archive (e.g., 1.2.3).")
+    var version: String
+
+    func run() throws {
+        let builder = SwiftBuilder()
+        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
+        let projectType = try builder.determineProjectType(at: inputPath)
+        try builder.archiveForRelease(projectType: projectType, version: version)
+    }
+}
+
+struct Prepare: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "prepare",
+        abstract: "Prepare release packages (DMG and ZIP) from an archived app."
+    )
+
+    @Argument(help: "Path to directory with Xcode project or Package.swift.")
+    var projectPath: String?
+
+    @Argument(help: "Version for the release packages (e.g., 1.2.3).")
+    var version: String
+
+    func run() throws {
+        let builder = SwiftBuilder()
+        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
+        let projectType = try builder.determineProjectType(at: inputPath)
+        try builder.prepareReleaseForUpload(projectType: projectType, version: version)
+    }
+}
+
+// MARK: Project Types and Errors
+
+extension SwiftBuilder {
     /// The type of project, either an Xcode project or a Swift package.
     enum ProjectType {
         case xcodeProject(path: String, name: String)
@@ -81,56 +153,15 @@ struct SwiftBuilder: ParsableCommand {
             .logAndThrow()
     }
 
-    /// Validates the command line arguments.
-    ///
-    /// - Throws: An error if the version format is invalid or both run and restart are specified.
-    func validate() throws {
-        // Validate version format if provided
-        if let version = release {
-            let versionRegex = try NSRegularExpression(pattern: #"^\d+\.\d+(\.\d+)?$"#)
-            let range = NSRange(version.startIndex..., in: version)
-            guard versionRegex.firstMatch(in: version, range: range) != nil else {
-                throw ValidationError("Version must be in format x.y or x.y.z (e.g., 1.2.3)")
-            }
-        }
-
-        // Validate prepare version format if provided
-        if let version = prepare {
-            let versionRegex = try NSRegularExpression(pattern: #"^\d+\.\d+(\.\d+)?$"#)
-            let range = NSRange(version.startIndex..., in: version)
-            guard versionRegex.firstMatch(in: version, range: range) != nil else {
-                throw ValidationError("Version must be in format x.y or x.y.z (e.g., 1.2.3)")
-            }
-        }
-
-        // Can't use both run and restart
-        if shouldRun, restart {
-            throw ValidationError("Cannot specify both --run and --restart")
-        }
-    }
-
-    /// Executes the main build workflow based on command line arguments.
-    func run() throws {
-        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
-
-        // Determine project type (should never fail for valid projects)
-        let projectType = try determineProjectType(at: inputPath)
-
-        // Handle the operation based on flags
-        if let version = release {
-            try archiveForRelease(projectType: projectType, version: version)
-        } else if let version = prepare {
-            try prepareReleaseForUpload(projectType: projectType, version: version)
-        } else {
-            try buildForDevelopment(projectType: projectType)
-        }
-    }
-
     /// Builds a project for development.
     ///
-    /// - Parameter projectType: The type of project to build.
+    /// - Parameters:
+    ///   - projectType: The type of project to build.
+    ///   - shouldRun: Whether to run the app after building.
+    ///   - targetName: Optional target name for Swift packages with multiple executables.
+    ///   - restart: Whether to kill existing process before running.
     /// - Throws: An error if the project cannot be built.
-    func buildForDevelopment(projectType: ProjectType) throws {
+    func buildForDevelopment(projectType: ProjectType, shouldRun: Bool = false, targetName: String? = nil, restart: Bool = false) throws {
         // Handle killing existing process if restart is requested
         if restart {
             let projectName = switch projectType {
@@ -154,7 +185,7 @@ struct SwiftBuilder: ParsableCommand {
             case let .xcodeProject(_, name): name
             case let .swiftPackage(_, name): name
             }
-            try runBuiltApp(projectName: projectName, projectType: projectType)
+            try runBuiltApp(projectName: projectName, projectType: projectType, targetName: targetName)
         }
     }
 
@@ -204,7 +235,7 @@ struct SwiftBuilder: ParsableCommand {
     ///   - version: The version for the packages.
     /// - Throws: An error if the packages cannot be created.
     func prepareXcodeProjectRelease(projectName: String, version: String) throws {
-        Self.logger.info("Preparing release packages for \(projectName) version \(version)")
+        Self.logger.info("Preparing release packages for \(projectName) \(version)...")
 
         // Define paths
         let homeDirectory = NSHomeDirectory()
@@ -240,13 +271,12 @@ struct SwiftBuilder: ParsableCommand {
         )
 
         // Open the releases folder
-        Self.logger.info("Opening release folder...")
         let openProcess = Process()
         openProcess.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         openProcess.arguments = [outputPath]
         try openProcess.run()
 
-        Self.logger.info("Release packages created successfully at \(outputPath)")
+        Self.logger.info("Release packages created successfully: \(outputPath)")
     }
 
     /// Creates a DMG package from an app.
@@ -332,7 +362,7 @@ struct SwiftBuilder: ParsableCommand {
                 .logAndThrow()
         }
 
-        Self.logger.info("Build completed successfully")
+        Self.logger.info("Build completed successfully!")
     }
 
     /// Builds a Swift package.
@@ -362,7 +392,7 @@ struct SwiftBuilder: ParsableCommand {
                 .logAndThrow()
         }
 
-        Self.logger.info("Build completed successfully")
+        Self.logger.info("Build completed successfully!")
     }
 
     /// Archives a Xcode project for release.
@@ -373,7 +403,7 @@ struct SwiftBuilder: ParsableCommand {
     ///   - version: The version to archive the project with.
     /// - Throws: An error if the Xcode project cannot be archived.
     func archiveXcodeProject(projectPath: String, projectName: String, version: String) throws {
-        Self.logger.info("Archiving \(projectName) with version \(version)")
+        Self.logger.info("Archiving \(projectName) with version \(version)...")
 
         // First, set the version in the project
         try setProjectVersion(projectPath: projectPath, version: version)
@@ -399,7 +429,7 @@ struct SwiftBuilder: ParsableCommand {
                 .logAndThrow()
         }
 
-        Self.logger.info("Archive completed successfully - check Xcode Organizer for next steps")
+        Self.logger.info("Archive complete! Now use Xcode Organizer to validate and distribute.")
     }
 
     /// Sets the version of a project.
@@ -409,7 +439,7 @@ struct SwiftBuilder: ParsableCommand {
     ///   - version: The version to set.
     /// - Throws: An error if the version cannot be set.
     func setProjectVersion(projectPath: String, version: String) throws {
-        Self.logger.info("Setting version to \(version)")
+        Self.logger.info("Setting version to: \(version)")
 
         let projectDir = URL(fileURLWithPath: projectPath).deletingLastPathComponent().path
 
@@ -451,8 +481,9 @@ struct SwiftBuilder: ParsableCommand {
     /// - Parameters:
     ///   - projectName: The name of the project.
     ///   - projectType: The type of project.
+    ///   - targetName: Optional target name for Swift packages with multiple executables.
     /// - Throws: An error if the app cannot be run.
-    func runBuiltApp(projectName: String, projectType: ProjectType) throws {
+    func runBuiltApp(projectName: String, projectType: ProjectType, targetName: String? = nil) throws {
         switch projectType {
         case .xcodeProject:
             // Xcode projects typically have one main executable
@@ -478,15 +509,29 @@ struct SwiftBuilder: ParsableCommand {
             case 0:
                 BuildError.buildFailed("No executable targets found in Swift package").logAndThrow()
             case 1:
-                let target = executables[0]
+                // If user specified a target, validate it exists; otherwise use the single target
+                let target = targetName ?? executables[0]
+                if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
+                    BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))").logAndThrow()
+                }
                 Self.logger.info("Running Swift package executable: \(target)")
                 try runSwiftPackageTarget(at: path, target: target)
             default:
-                let executableList = executables.joined(separator: ", ")
-                BuildError.buildFailed(
-                    "Multiple executables found:\n \(executableList) " +
-                        "\n\nPlease specify which to run: swbuilder --run <executable-name>"
-                ).logAndThrow(warning: true)
+                // Multiple executables - user must specify which one
+                if let specifiedTarget = targetName {
+                    if executables.contains(specifiedTarget) {
+                        Self.logger.info("Running Swift package executable: \(specifiedTarget)")
+                        try runSwiftPackageTarget(at: path, target: specifiedTarget)
+                    } else {
+                        BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))").logAndThrow()
+                    }
+                } else {
+                    let executableList = executables.joined(separator: ", ")
+                    BuildError.buildFailed(
+                        "Multiple executables found:\n \(executableList) " +
+                            "\n\nPlease specify which to run: swbuilder --run <executable-name>"
+                    ).logAndThrow(warning: true)
+                }
             }
         }
     }
@@ -527,20 +572,20 @@ struct SwiftBuilder: ParsableCommand {
         return nil
     }
 
-    /// Finds all executable targets defined in a Swift package.
+    /// Finds all executable products defined in a Swift package.
     ///
     /// - Parameter path: The path to the Swift package directory.
-    /// - Returns: An array of executable target names.
+    /// - Returns: An array of executable product names.
     /// - Throws: BuildError if Package.swift cannot be read or parsed.
     func findSwiftPackageExecutables(at path: String) throws -> [String] {
-        // Parse Package.swift to find executable targets
+        // Parse Package.swift to find executable products
         let packageSwiftPath = "\(path)/Package.swift"
 
         do {
             let content = try String(contentsOfFile: packageSwiftPath, encoding: .utf8)
 
-            // Look for executable targets - this regex finds .executableTarget patterns
-            let executablePattern = #"\.executableTarget\s*\(\s*name:\s*"([^"]+)""#
+            // Look for executable products - this regex finds .executable patterns
+            let executablePattern = #"\.executable\s*\(\s*name:\s*"([^"]+)""#
             let executableRegex = try NSRegularExpression(pattern: executablePattern)
 
             var executables: [String] = []
