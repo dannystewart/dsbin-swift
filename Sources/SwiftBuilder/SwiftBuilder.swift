@@ -40,6 +40,12 @@ struct SwiftBuilder: ParsableCommand {
             case let .buildFailed(message): return message
             }
         }
+
+        func logAndThrow(warning: Bool = false) -> Never {
+            if warning { SwiftBuilder.logger.warning(localizedDescription) }
+            else { SwiftBuilder.logger.error(localizedDescription) }
+            Foundation.exit(1)
+        }
     }
 
     /// Determines the type of project at a given path (either Xcode or Swift).
@@ -61,12 +67,16 @@ struct SwiftBuilder: ParsableCommand {
         let packageSwiftPath = "\(path)/Package.swift"
         if fileManager.fileExists(atPath: packageSwiftPath) {
             guard let packageName = extractPackageName(from: path) else {
-                throw BuildError.invalidProject("Found Package.swift but couldn't extract package name")
+                BuildError
+                    .invalidProject("Found Package.swift but couldn't extract package name")
+                    .logAndThrow()
             }
             return .swiftPackage(path: path, name: packageName)
         }
 
-        throw BuildError.invalidProject("No Xcode project or Package.swift found at \(path)")
+        BuildError
+            .invalidProject("No Xcode project or Package.swift found at \(path)")
+            .logAndThrow()
     }
 
     /// Validates the command line arguments.
@@ -146,7 +156,11 @@ struct SwiftBuilder: ParsableCommand {
         case let .xcodeProject(path, name):
             try archiveXcodeProject(projectPath: path, projectName: name, version: version)
         case .swiftPackage:
-            throw BuildError.buildFailed("Archiving is not supported for Swift packages. Use 'swift build -c release' instead.")
+            BuildError
+                .buildFailed(
+                    "Archiving is not supported for Swift packages. Use 'swift build -c release' instead."
+                )
+                .logAndThrow()
         }
     }
 
@@ -174,7 +188,9 @@ struct SwiftBuilder: ParsableCommand {
         buildProcess.waitUntilExit()
 
         guard buildProcess.terminationStatus == 0 else {
-            throw BuildError.buildFailed("Xcode build failed with exit code \(buildProcess.terminationStatus)")
+            BuildError
+                .buildFailed("Xcode build failed with exit code \(buildProcess.terminationStatus)")
+                .logAndThrow()
         }
 
         Self.logger.info("Build completed successfully")
@@ -202,7 +218,9 @@ struct SwiftBuilder: ParsableCommand {
         buildProcess.waitUntilExit()
 
         guard buildProcess.terminationStatus == 0 else {
-            throw BuildError.buildFailed("Swift build failed with exit code \(buildProcess.terminationStatus)")
+            BuildError
+                .buildFailed("Swift build failed with exit code \(buildProcess.terminationStatus)")
+                .logAndThrow()
         }
 
         Self.logger.info("Build completed successfully")
@@ -237,7 +255,9 @@ struct SwiftBuilder: ParsableCommand {
         archiveProcess.waitUntilExit()
 
         guard archiveProcess.terminationStatus == 0 else {
-            throw BuildError.buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)")
+            BuildError
+                .buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)")
+                .logAndThrow()
         }
 
         Self.logger.info("Archive completed successfully - check Xcode Organizer for next steps")
@@ -296,39 +316,39 @@ struct SwiftBuilder: ParsableCommand {
     func runBuiltApp(projectName: String, projectType: ProjectType) throws {
         switch projectType {
         case .xcodeProject:
-            // Find the built app in DerivedData and run it directly
+            // Xcode projects typically have one main executable
             guard let appPath = findBuiltApp(projectName: projectName) else {
-                throw BuildError.buildFailed("Could not find built app for \(projectName)")
+                BuildError.buildFailed("Could not find built app for \(projectName)").logAndThrow()
             }
 
             Self.logger.info("Running app: \(appPath)")
 
             let runProcess = Process()
             runProcess.executableURL = URL(fileURLWithPath: appPath)
-
-            // Keep logs flowing to terminal (your preferred workflow)
             runProcess.standardOutput = FileHandle.standardOutput
             runProcess.standardError = FileHandle.standardError
             runProcess.standardInput = FileHandle.standardInput
 
             try runProcess.run()
-                // Don't wait - let it run in background while keeping logs
 
-        case let .swiftPackage(path, name):
-            Self.logger.info("Running Swift package: \(name)")
+        case let .swiftPackage(path, _):
+            // Swift packages can have multiple executables, so identify or ask
+            let executables = try findSwiftPackageExecutables(at: path)
 
-            let runProcess = Process()
-            runProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-            runProcess.arguments = ["run"]
-            runProcess.currentDirectoryPath = path
-
-            // Stream output
-            runProcess.standardOutput = FileHandle.standardOutput
-            runProcess.standardError = FileHandle.standardError
-            runProcess.standardInput = FileHandle.standardInput
-
-            try runProcess.run()
-            runProcess.waitUntilExit()
+            switch executables.count {
+            case 0:
+                BuildError.buildFailed("No executable targets found in Swift package").logAndThrow()
+            case 1:
+                let target = executables[0]
+                Self.logger.info("Running Swift package executable: \(target)")
+                try runSwiftPackageTarget(at: path, target: target)
+            default:
+                let executableList = executables.joined(separator: ", ")
+                BuildError.buildFailed(
+                    "Multiple executables found:\n \(executableList) " +
+                        "\n\nPlease specify which to run: swbuilder --run <executable-name>"
+                ).logAndThrow(warning: true)
+            }
         }
     }
 
@@ -366,6 +386,58 @@ struct SwiftBuilder: ParsableCommand {
             return nil
         }
         return nil
+    }
+
+    /// Finds all executable targets defined in a Swift package.
+    ///
+    /// - Parameter path: The path to the Swift package directory.
+    /// - Returns: An array of executable target names.
+    /// - Throws: BuildError if Package.swift cannot be read or parsed.
+    func findSwiftPackageExecutables(at path: String) throws -> [String] {
+        // Parse Package.swift to find executable targets
+        let packageSwiftPath = "\(path)/Package.swift"
+
+        do {
+            let content = try String(contentsOfFile: packageSwiftPath, encoding: .utf8)
+
+            // Look for executable targets - this regex finds .executableTarget patterns
+            let executablePattern = #"\.executableTarget\s*\(\s*name:\s*"([^"]+)""#
+            let executableRegex = try NSRegularExpression(pattern: executablePattern)
+
+            var executables: [String] = []
+            let range = NSRange(content.startIndex..., in: content)
+            let matches = executableRegex.matches(in: content, range: range)
+
+            for match in matches {
+                if let nameRange = Range(match.range(at: 1), in: content) {
+                    executables.append(String(content[nameRange]))
+                }
+            }
+
+            return executables
+        } catch {
+            BuildError.buildFailed("Could not read Package.swift: \(error)").logAndThrow()
+        }
+    }
+
+    /// Runs a specific executable target in a Swift package.
+    ///
+    /// - Parameters:
+    ///   - path: The path to the Swift package directory.
+    ///   - target: The name of the executable target to run.
+    /// - Throws: An error if the target cannot be executed.
+    func runSwiftPackageTarget(at path: String, target: String) throws {
+        let runProcess = Process()
+        runProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+        runProcess.arguments = ["run", target]
+        runProcess.currentDirectoryPath = path
+
+        runProcess.standardOutput = FileHandle.standardOutput
+        runProcess.standardError = FileHandle.standardError
+        runProcess.standardInput = FileHandle.standardInput
+
+        try runProcess.run()
+        runProcess.waitUntilExit()
     }
 
     /// Finds an Xcode project in a path.
