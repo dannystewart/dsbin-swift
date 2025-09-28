@@ -6,133 +6,329 @@ import PolyLog
 struct SwiftBuilder: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swbuilder",
-        abstract: "Build Xcode projects or Swift packages with optional version bumping."
+        abstract: "Build Xcode projects or Swift packages with optional running or archiving."
     )
 
     private static let logger = PolyLog(simple: true)
 
-    @Argument(help: "Path to directory with Xcode project or Package.swift")
+    @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
-
-    @Flag(name: .long, help: "Increment the version number.")
-    var bumpVersion = false
-
-    @Flag(name: .long, help: "Build release version.")
-    var release = false
 
     @Flag(name: .customLong("run"), help: "Run the app after building.")
     var shouldRun = false
 
-    func run() throws {
-        // Get project path from command line or current directory
-        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
+    @Flag(name: .long, help: "Kill existing process, build, then run.")
+    var restart = false
 
-        // Check if it's an Xcode project or Swift package
-        if let project = findXcodeProject(in: inputPath) {
-            try buildXcodeProject(project: project)
-        } else if isSwiftPackage(in: inputPath) {
-            try buildSwiftPackage(in: inputPath)
-        } else {
-            Self.logger.error("Couldn't find Xcode or Swift package at \(inputPath)")
-            return
-        }
+    @Option(name: .long, help: "Archive for release with specified version (e.g., 1.2.3).")
+    var release: String?
 
-        // Run the app if requested
-        if shouldRun {
-            let projectName = extractPackageName(from: inputPath) ?? "Unknown"
-            let appPath = findBuiltApp(projectName: projectName)
-            if let app = appPath {
-                let runProcess = Process()
-                runProcess.executableURL = URL(fileURLWithPath: app)
-                try? runProcess.run()
+    /// The type of project, either an Xcode project or a Swift package.
+    enum ProjectType {
+        case xcodeProject(path: String, name: String)
+        case swiftPackage(path: String, name: String)
+    }
+
+    /// The error type given when building projects.
+    enum BuildError: Error, LocalizedError {
+        case invalidProject(String)
+        case buildFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case let .invalidProject(message): return message
+            case let .buildFailed(message): return message
             }
         }
     }
 
-    /// Builds an Xcode project.
+    /// Determines the type of project at a given path (either Xcode or Swift).
     ///
-    /// - Parameter project: The path to the Xcode project.
-    func buildXcodeProject(project: String) throws {
-        let releaseType = release ? "release" : "debug"
-        Self.logger.info("Building \(releaseType) version of Xcode project at \(project)...")
+    /// - Parameter path: The path to determine the project type for.
+    /// - Returns: The type of project.
+    func determineProjectType(at path: String) throws -> ProjectType {
+        let fileManager = FileManager.default
 
-        // Extract project name from path
-        let projectName = URL(fileURLWithPath: project).deletingPathExtension().lastPathComponent
-
-        // Kill existing process
-        let killProcess = Process()
-        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        killProcess.arguments = ["-f", projectName]
-        try? killProcess.run()
-
-        // Increment build number if requested
-        if bumpVersion {
-            let versionProcess = Process()
-            versionProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-            versionProcess.arguments = ["agvtool", "next-version", "-all"]
-            versionProcess.currentDirectoryPath =
-                URL(fileURLWithPath: project).deletingLastPathComponent().path
-            try? versionProcess.run()
-            versionProcess.waitUntilExit()
+        // Check for Xcode project first
+        if let xcodeProject = findXcodeProject(in: path) {
+            let projectName = URL(fileURLWithPath: xcodeProject)
+                .deletingPathExtension()
+                .lastPathComponent
+            return .xcodeProject(path: xcodeProject, name: projectName)
         }
 
-        // Build the project with appropriate configuration
-        let configuration = release ? "Release" : "Debug"
-        let buildProcess = Process()
-        buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        buildProcess.arguments = [
-            "xcodebuild", "-project", project, "-scheme", projectName, "-configuration",
-            configuration,
-            "build",
-        ]
-        do {
-            try buildProcess.run()
-        } catch {
-            Self.logger.error("Build failed: \(error)")
-            throw error
+        // Check for Swift package
+        let packageSwiftPath = "\(path)/Package.swift"
+        if fileManager.fileExists(atPath: packageSwiftPath) {
+            guard let packageName = extractPackageName(from: path) else {
+                throw BuildError.invalidProject("Found Package.swift but couldn't extract package name")
+            }
+            return .swiftPackage(path: path, name: packageName)
         }
-        buildProcess.waitUntilExit()
 
-        // Find and run the built app
-        let appPath = findBuiltApp(projectName: projectName)
-        if let app = appPath {
-            let runProcess = Process()
-            runProcess.executableURL = URL(fileURLWithPath: app)
-            try? runProcess.run()
+        throw BuildError.invalidProject("No Xcode project or Package.swift found at \(path)")
+    }
+
+    /// Validates the command line arguments.
+    ///
+    /// - Throws: An error if the version format is invalid or both run and restart are specified.
+    func validate() throws {
+        // Validate version format if provided
+        if let version = release {
+            let versionRegex = try NSRegularExpression(pattern: #"^\d+\.\d+(\.\d+)?$"#)
+            let range = NSRange(version.startIndex..., in: version)
+            guard versionRegex.firstMatch(in: version, range: range) != nil else {
+                throw ValidationError("Version must be in format x.y or x.y.z (e.g., 1.2.3)")
+            }
+        }
+
+        // Can't use both run and restart
+        if shouldRun, restart {
+            throw ValidationError("Cannot specify both --run and --restart")
         }
     }
 
-    /// Builds a Swift package.
+    /// Executes the main build workflow based on command line arguments.
+    func run() throws {
+        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
+
+        // Determine project type (should never fail for valid projects)
+        let projectType = try determineProjectType(at: inputPath)
+
+        // Handle the operation based on flags
+        if let version = release {
+            try archiveForRelease(projectType: projectType, version: version)
+        } else {
+            try buildForDevelopment(projectType: projectType)
+        }
+    }
+
+    /// Builds a project for development.
     ///
-    /// - Parameter path: The path to the Swift package.
-    func buildSwiftPackage(in path: String) throws {
-        let releaseType = release ? "release" : "debug"
-        Self.logger.info("Building \(releaseType) version of Swift package at \(path)...")
+    /// - Parameter projectType: The type of project to build.
+    /// - Throws: An error if the project cannot be built.
+    func buildForDevelopment(projectType: ProjectType) throws {
+        // Handle killing existing process if restart is requested
+        if restart {
+            let projectName = switch projectType {
+            case let .xcodeProject(_, name): name
+            case let .swiftPackage(_, name): name
+            }
+            killExistingProcess(named: projectName)
+        }
 
-        // Extract package name from Package.swift
-        let packageName = extractPackageName(from: path) ?? "Unknown"
+        // Build the project
+        switch projectType {
+        case let .xcodeProject(path, name):
+            try buildXcodeProjectDebug(projectPath: path, projectName: name)
+        case let .swiftPackage(path, name):
+            try buildSwiftPackageDebug(packagePath: path, packageName: name)
+        }
 
-        // Kill existing process
-        let killProcess = Process()
-        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        killProcess.arguments = ["-f", packageName]
-        try? killProcess.run()
+        // Run if requested
+        if shouldRun || restart {
+            let projectName = switch projectType {
+            case let .xcodeProject(_, name): name
+            case let .swiftPackage(_, name): name
+            }
+            try runBuiltApp(projectName: projectName, projectType: projectType)
+        }
+    }
 
-        // Build the Swift package with appropriate configuration
+    /// Archives a project for release.
+    ///
+    /// - Parameters:
+    ///   - projectType: The type of project to archive.
+    ///   - version: The version to archive the project with.
+    /// - Throws: An error if the project cannot be archived.
+    func archiveForRelease(projectType: ProjectType, version: String) throws {
+        switch projectType {
+        case let .xcodeProject(path, name):
+            try archiveXcodeProject(projectPath: path, projectName: name, version: version)
+        case .swiftPackage:
+            throw BuildError.buildFailed("Archiving is not supported for Swift packages. Use 'swift build -c release' instead.")
+        }
+    }
+
+    /// Builds a Xcode project in debug mode.
+    ///
+    /// - Parameters:
+    ///   - projectPath: The path to the Xcode project.
+    ///   - projectName: The name of the Xcode project.
+    /// - Throws: An error if the Xcode project cannot be built.
+    func buildXcodeProjectDebug(projectPath: String, projectName: String) throws {
+        Self.logger.info("Building Xcode project: \(projectName)")
+
         let buildProcess = Process()
-        buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-        let buildArgs = release ? ["build", "-c", "release"] : ["build"]
-        buildProcess.arguments = buildArgs
-        buildProcess.currentDirectoryPath = path
-        try? buildProcess.run()
+        buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        buildProcess.arguments = [
+            "xcodebuild", "-project", projectPath, "-scheme", projectName,
+            "-configuration", "Debug", "build",
+        ]
+
+        // Stream output directly
+        buildProcess.standardOutput = FileHandle.standardOutput
+        buildProcess.standardError = FileHandle.standardError
+
+        try buildProcess.run()
         buildProcess.waitUntilExit()
 
-        // Find and run the built app
-        let appPath = findBuiltApp(projectName: packageName)
-        if let app = appPath {
+        guard buildProcess.terminationStatus == 0 else {
+            throw BuildError.buildFailed("Xcode build failed with exit code \(buildProcess.terminationStatus)")
+        }
+
+        Self.logger.info("Build completed successfully")
+    }
+
+    /// Builds a Swift package in debug mode.
+    ///
+    /// - Parameters:
+    ///   - packagePath: The path to the Swift package.
+    ///   - packageName: The name of the Swift package.
+    /// - Throws: An error if the Swift package cannot be built.
+    func buildSwiftPackageDebug(packagePath: String, packageName: String) throws {
+        Self.logger.info("Building Swift package: \(packageName)")
+
+        let buildProcess = Process()
+        buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+        buildProcess.arguments = ["build"]
+        buildProcess.currentDirectoryPath = packagePath
+
+        // Stream output directly
+        buildProcess.standardOutput = FileHandle.standardOutput
+        buildProcess.standardError = FileHandle.standardError
+
+        try buildProcess.run()
+        buildProcess.waitUntilExit()
+
+        guard buildProcess.terminationStatus == 0 else {
+            throw BuildError.buildFailed("Swift build failed with exit code \(buildProcess.terminationStatus)")
+        }
+
+        Self.logger.info("Build completed successfully")
+    }
+
+    /// Archives a Xcode project for release.
+    ///
+    /// - Parameters:
+    ///   - projectPath: The path to the Xcode project.
+    ///   - projectName: The name of the Xcode project.
+    ///   - version: The version to archive the project with.
+    /// - Throws: An error if the Xcode project cannot be archived.
+    func archiveXcodeProject(projectPath: String, projectName: String, version: String) throws {
+        Self.logger.info("Archiving \(projectName) with version \(version)")
+
+        // First, set the version in the project
+        try setProjectVersion(projectPath: projectPath, version: version)
+
+        // Now archive
+        let archiveProcess = Process()
+        archiveProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        archiveProcess.arguments = [
+            "xcodebuild", "-project", projectPath, "-scheme", projectName,
+            "-configuration", "Release", "archive",
+        ]
+
+        // Stream output directly
+        archiveProcess.standardOutput = FileHandle.standardOutput
+        archiveProcess.standardError = FileHandle.standardError
+
+        try archiveProcess.run()
+        archiveProcess.waitUntilExit()
+
+        guard archiveProcess.terminationStatus == 0 else {
+            throw BuildError.buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)")
+        }
+
+        Self.logger.info("Archive completed successfully - check Xcode Organizer for next steps")
+    }
+
+    /// Sets the version of a project.
+    ///
+    /// - Parameters:
+    ///   - projectPath: The path to the project.
+    ///   - version: The version to set.
+    /// - Throws: An error if the version cannot be set.
+    func setProjectVersion(projectPath: String, version: String) throws {
+        Self.logger.info("Setting version to \(version)")
+
+        let projectDir = URL(fileURLWithPath: projectPath).deletingLastPathComponent().path
+
+        // Set both version and build number to the same value
+        let setVersionProcess = Process()
+        setVersionProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        setVersionProcess.arguments = ["agvtool", "new-marketing-version", version]
+        setVersionProcess.currentDirectoryPath = projectDir
+
+        try setVersionProcess.run()
+        setVersionProcess.waitUntilExit()
+
+        let setBuildProcess = Process()
+        setBuildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        setBuildProcess.arguments = ["agvtool", "new-version", "-all", version]
+        setBuildProcess.currentDirectoryPath = projectDir
+
+        try setBuildProcess.run()
+        setBuildProcess.waitUntilExit()
+    }
+
+    /// Kills an existing process.
+    ///
+    /// - Parameter processName: The name of the process to kill.
+    func killExistingProcess(named processName: String) {
+        Self.logger.info("Killing existing process: \(processName)")
+
+        let killProcess = Process()
+        killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
+        killProcess.arguments = ["-f", processName]
+
+        // It doesn't matter if this fails since the process might not be running
+        try? killProcess.run()
+        killProcess.waitUntilExit()
+    }
+
+    /// Runs a built app.
+    ///
+    /// - Parameters:
+    ///   - projectName: The name of the project.
+    ///   - projectType: The type of project.
+    /// - Throws: An error if the app cannot be run.
+    func runBuiltApp(projectName: String, projectType: ProjectType) throws {
+        switch projectType {
+        case .xcodeProject:
+            // Find the built app in DerivedData and run it directly
+            guard let appPath = findBuiltApp(projectName: projectName) else {
+                throw BuildError.buildFailed("Could not find built app for \(projectName)")
+            }
+
+            Self.logger.info("Running app: \(appPath)")
+
             let runProcess = Process()
-            runProcess.executableURL = URL(fileURLWithPath: app)
-            try? runProcess.run()
+            runProcess.executableURL = URL(fileURLWithPath: appPath)
+
+            // Keep logs flowing to terminal (your preferred workflow)
+            runProcess.standardOutput = FileHandle.standardOutput
+            runProcess.standardError = FileHandle.standardError
+            runProcess.standardInput = FileHandle.standardInput
+
+            try runProcess.run()
+                // Don't wait - let it run in background while keeping logs
+
+        case let .swiftPackage(path, name):
+            Self.logger.info("Running Swift package: \(name)")
+
+            let runProcess = Process()
+            runProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+            runProcess.arguments = ["run"]
+            runProcess.currentDirectoryPath = path
+
+            // Stream output
+            runProcess.standardOutput = FileHandle.standardOutput
+            runProcess.standardError = FileHandle.standardError
+            runProcess.standardInput = FileHandle.standardInput
+
+            try runProcess.run()
+            runProcess.waitUntilExit()
         }
     }
 
@@ -229,28 +425,5 @@ struct SwiftBuilder: ParsableCommand {
         }
 
         return nil
-    }
-
-    /// Runs an app at a given path.
-    ///
-    /// - Parameter appPath: The path to the app to run.
-    func runApp(at appPath: String) throws {
-        let runProcess = Process()
-        runProcess.executableURL = URL(fileURLWithPath: appPath)
-        runProcess.standardInput = FileHandle.standardInput
-        runProcess.standardOutput = FileHandle.standardOutput
-        runProcess.standardError = FileHandle.standardError
-
-        try runProcess.run()
-
-        // Use DispatchSource for signal handling
-        let signalSource = DispatchSource.makeSignalSource(signal: SIGINT)
-        signalSource.setEventHandler {
-            runProcess.terminate()
-            Self.exit(withError: nil)
-        }
-        signalSource.resume()
-
-        runProcess.waitUntilExit()
     }
 }
