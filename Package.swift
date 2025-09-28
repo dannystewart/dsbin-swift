@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "swbuilder", targets: ["SwiftBuilder"]),
         .executable(name: "swcompare", targets: ["SwiftCompare"]),
+        .executable(name: "swconfigs", targets: ["SwiftConfigs"]),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.1"),
@@ -28,6 +29,15 @@ let package = Package(
                 .product(name: "PolyText", package: "polykit-swift"),
             ],
             path: "Sources/SwiftCompare"
+        ),
+        .executableTarget(
+            name: "SwiftConfigs",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "PolyText", package: "polykit-swift"),
+            ],
+            path: "Sources/SwiftConfigs",
+            exclude: ["Templates"]
         ),
     ]
 )
