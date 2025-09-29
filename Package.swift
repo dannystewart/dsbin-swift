@@ -5,13 +5,13 @@ let package = Package(
     name: "dsbin-swift",
     platforms: [.macOS(.v26)],
     products: [
-        .executable(name: "swbuilder", targets: ["SwiftBuilder"]),
+        .executable(name: "swbuild", targets: ["SwiftBuilder"]),
         .executable(name: "swcompare", targets: ["SwiftCompare"]),
         .executable(name: "swconfigs", targets: ["SwiftConfigs"]),
     ],
     dependencies: [
+        .package(path: "../polykit-swift"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.1"),
-        .package(url: "https://github.com/dannystewart/polykit-swift.git", branch: "main"),
     ],
     targets: [
         .executableTarget(
