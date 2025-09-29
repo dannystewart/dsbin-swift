@@ -51,68 +51,98 @@ struct SwiftConfigs: AsyncParsableCommand {
             ConfigFile(name: "project.code-workspace", isTemplate: true),
         ]
 
+        // Helper struct to track config file status
+        struct ConfigStatus {
+            let fileExists: Bool
+        }
+
         func updateConfigs() async throws {
-            for config in configs {
-                let fileExists = FileManager.default.fileExists(atPath: config.destinationURL.path)
+            // Check which configs need updates
+            let configStatuses = await withTaskGroup(of: (ConfigFile, ConfigStatus).self) { group in
+                var results: [(ConfigFile, ConfigStatus)] = []
 
-                if fileExists {
-                    if config.isTemplate { // Templates should never overwrite existing files
-                        Text.printColor(
-                            "- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists",
-                            .cyan,
-                        )
-                        continue
-                    } else { // Live configs may be updated, so show diff and ask if we should overwrite
-                        // Download the remote content first to compare
-                        let (remoteData, _) = try await URLSession.shared.data(from: config.sourceURL)
-                        let remoteContent = String(data: remoteData, encoding: .utf8) ?? ""
-
-                        // Read local content
-                        let localContent = try String(contentsOf: config.destinationURL, encoding: .utf8)
-
-                        // Show diff if content is different
-                        if localContent != remoteContent {
-                            print("\n--- Changes detected in \(config.destinationURL.lastPathComponent) ---")
-                            _ = PolyDiff.content(
-                                old: localContent,
-                                new: remoteContent,
-                                filename: config.destinationURL.lastPathComponent,
-                            )
-                            print("--- End of changes ---\n")
-                        } else {
-                            Text.printColor(
-                                "- No changes needed for \(config.destinationURL.lastPathComponent)",
-                                .cyan,
-                            )
-                            continue
-                        }
-
-                        Text.printColor(
-                            "Update \(config.destinationURL.lastPathComponent)? (y/N): ",
-                            .yellow,
-                            terminator: "",
-                        )
-
-                        // Read single character without requiring Enter
-                        let response = PolyTerm.readSingleChar()
-                        print()
-                        if response.lowercased() != "y" {
-                            Text.printColor("- Skipping \(config.destinationURL.lastPathComponent)", .cyan)
-                            continue
-                        }
-
-                        // Write the updated content
-                        try remoteData.write(to: config.destinationURL)
-                        Text.printColor("✓ Updated \(config.destinationURL.lastPathComponent)", .green)
-                        continue
+                for config in configs {
+                    group.addTask {
+                        let fileExists = FileManager.default.fileExists(atPath: config.destinationURL.path)
+                        return (config, ConfigStatus(fileExists: fileExists))
                     }
                 }
 
-                // Download the file from the remote source for new files
-                let (data, _) = try await URLSession.shared.data(from: config.sourceURL)
-                try data.write(to: config.destinationURL)
-                Text.printColor("✓ Downloaded \(config.destinationURL.lastPathComponent)", .green)
+                for await (config, status) in group {
+                    results.append((config, status))
+                }
+
+                return results
             }
+
+            // Process each config based on its status
+            for (config, status) in configStatuses {
+                try await processConfig(config, status: status)
+            }
+        }
+
+        // Helper method to process individual configs
+        private func processConfig(_ config: ConfigFile, status: ConfigStatus) async throws {
+            if status.fileExists {
+                if config.isTemplate { // Templates should never overwrite existing files
+                    Text.printColor(
+                        "- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists",
+                        .cyan,
+                    )
+                    return
+                } else { // Live configs may be updated, so show diff and ask if we should overwrite
+                    // Download the remote content first to compare
+                    let (remoteData, _) = try await URLSession.shared.data(from: config.sourceURL)
+                    let remoteContent = String(data: remoteData, encoding: .utf8) ?? ""
+
+                    // Read local content
+                    let localContent = try String(contentsOf: config.destinationURL, encoding: .utf8)
+
+                    // Show diff if content is different
+                    if localContent != remoteContent {
+                        Text.printColor(
+                            "\n--- Changes detected in \(config.destinationURL.lastPathComponent) ---",
+                            .yellow,
+                        )
+                        _ = PolyDiff.content(
+                            old: localContent,
+                            new: remoteContent,
+                            filename: config.destinationURL.lastPathComponent,
+                        )
+                        Text.printColor("--- End of changes ---\n", .yellow)
+                    } else {
+                        Text.printColor(
+                            "- No changes needed for \(config.destinationURL.lastPathComponent)",
+                            .cyan,
+                        )
+                        return
+                    }
+
+                    Text.printColor(
+                        "Update \(config.destinationURL.lastPathComponent)? (y/N): ",
+                        .yellow,
+                        terminator: "",
+                    )
+
+                    // Read single character without requiring Enter
+                    let response = PolyTerm.readSingleChar()
+                    print()
+                    if response.lowercased() != "y" {
+                        Text.printColor("- Skipping \(config.destinationURL.lastPathComponent)", .cyan)
+                        return
+                    }
+
+                    // Write the updated content
+                    try remoteData.write(to: config.destinationURL)
+                    Text.printColor("✓ Updated \(config.destinationURL.lastPathComponent)", .green)
+                    return
+                }
+            }
+
+            // Download the file from the remote source for new files
+            let (data, _) = try await URLSession.shared.data(from: config.sourceURL)
+            try data.write(to: config.destinationURL)
+            Text.printColor("✓ Downloaded \(config.destinationURL.lastPathComponent)", .green)
         }
     }
 
