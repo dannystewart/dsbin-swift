@@ -22,14 +22,14 @@ struct SwiftConfigs: AsyncParsableCommand {
 
         var sourceURL: URL {
             if isTemplate {
-                URL(string: baseURL + "Templates/\(name)")!
+                URL(string: baseURL + "Sources/SwiftConfigs/Templates/\(name)")!
             } else {
                 URL(string: baseURL + name)!
             }
         }
 
-        var destinationURL: URL { // For templates, strip .template from the name
-            let finalName = isTemplate ? name.replacingOccurrences(of: ".template", with: "") : name
+        var destinationURL: URL {
+            let finalName = name
 
             // code-workspace files should use the parent directory as the filename
             if finalName == "project.code-workspace" {
