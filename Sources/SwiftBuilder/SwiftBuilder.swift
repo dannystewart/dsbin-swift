@@ -7,13 +7,14 @@ struct SwiftBuilder: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swbuilder",
         abstract: "Build Xcode projects or Swift packages with optional running or archiving.",
-        subcommands: [Build.self, Run.self, Archive.self, Prepare.self],
+        subcommands: [Build.self, Run.self, Archive.self, Prepare.self, Install.self],
+        defaultSubcommand: Build.self,
     )
 
     private static let logger = PolyLog(simple: true)
 }
 
-// MARK: Subcommands
+// MARK: - Subcommands
 
 struct Build: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -100,7 +101,30 @@ struct Prepare: ParsableCommand {
     }
 }
 
-// MARK: Project Types and Errors
+struct Install: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "install",
+        abstract: "Install the built executable by creating a symlink in ~/.local/bin.",
+    )
+
+    @Argument(help: "Path to directory with Xcode project or Package.swift.")
+    var projectPath: String?
+
+    @Option(name: .shortAndLong, help: "Target name for Swift packages with multiple executables.")
+    var target: String?
+
+    @Flag(name: .long, help: "Force overwrite existing symlink.")
+    var force = false
+
+    func run() throws {
+        let builder = SwiftBuilder()
+        let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
+        let projectType = try builder.determineProjectType(at: inputPath)
+        try builder.installExecutable(projectType: projectType, targetName: target, force: force)
+    }
+}
+
+// MARK: - Project Types and Errors
 
 extension SwiftBuilder {
     /// The type of project, either an Xcode project or a Swift package.
@@ -113,15 +137,25 @@ extension SwiftBuilder {
     enum BuildError: LoggableError {
         case invalidProject(String)
         case buildFailed(String)
+        case multipleExecutables(String)
+        case alreadyInstalled(String)
 
         var logMessage: String {
             switch self {
-            case let .invalidProject(msg): return msg
-            case let .buildFailed(msg): return msg
+            case let .invalidProject(msg): msg
+            case let .buildFailed(msg): msg
+            case let .multipleExecutables(msg): msg
+            case let .alreadyInstalled(msg): msg
             }
         }
 
-        var isWarning: Bool { false }
+        var isWarning: Bool {
+            switch self {
+            case .multipleExecutables: true
+            case .alreadyInstalled: true
+            default: false
+            }
+        }
     }
 
     /// Determines the type of project at a given path (either Xcode or Swift).
@@ -231,6 +265,117 @@ extension SwiftBuilder {
                 .buildFailed(
                     "Release preparation is not supported for Swift packages. Only Xcode projects can be packaged.",
                 ))
+        }
+    }
+
+    /// Installs the built executable by creating a symlink in ~/.local/bin.
+    ///
+    /// - Parameters:
+    ///   - projectType: The type of project to install.
+    ///   - targetName: Optional target name for Swift packages with multiple executables.
+    ///   - force: Whether to force overwrite existing symlinks.
+    /// - Throws: An error if the executable cannot be installed.
+    func installExecutable(projectType: ProjectType, targetName: String?, force: Bool) throws {
+        // First, ensure the project is built
+        try buildForDevelopment(projectType: projectType)
+
+        // Get the executable path and name
+        let (executablePath, executableName) = try getExecutableInfo(
+            projectType: projectType,
+            targetName: targetName,
+        )
+
+        // Create ~/.local/bin directory if it doesn't exist
+        let homeDirectory = NSHomeDirectory()
+        let localBinPath = "\(homeDirectory)/.local/bin"
+        let fileManager = FileManager.default
+
+        if !fileManager.fileExists(atPath: localBinPath) {
+            try fileManager.createDirectory(atPath: localBinPath, withIntermediateDirectories: true)
+            Self.logger.info("Created directory: \(localBinPath)")
+        }
+
+        // Create the symlink
+        let symlinkPath = "\(localBinPath)/\(executableName)"
+
+        // Check if symlink already exists
+        if fileManager.fileExists(atPath: symlinkPath) {
+            if force {
+                try fileManager.removeItem(atPath: symlinkPath)
+                Self.logger.info("Removed existing symlink: \(symlinkPath)")
+            } else {
+                Self.logger.logAndExit(BuildError
+                    .alreadyInstalled(
+                        "Symlink already exists at \(symlinkPath). Use --force to overwrite.",
+                    ))
+            }
+        }
+
+        // Create the symlink
+        try fileManager.createSymbolicLink(atPath: symlinkPath, withDestinationPath: executablePath)
+        Self.logger.info("Created symlink: \(symlinkPath) -> \(executablePath)")
+
+        // Make the symlink executable
+        let attributes = [FileAttributeKey.posixPermissions: 0o755]
+        try fileManager.setAttributes(attributes, ofItemAtPath: symlinkPath)
+
+        Self.logger.info("\nInstallation complete! You can now run '\(executableName)' from anywhere.")
+    }
+
+    /// Gets the executable path and name for a project.
+    ///
+    /// - Parameters:
+    ///   - projectType: The type of project.
+    ///   - targetName: Optional target name for Swift packages with multiple executables.
+    /// - Returns: A tuple containing the executable path and name.
+    /// - Throws: An error if the executable cannot be found.
+    func getExecutableInfo(projectType: ProjectType,
+                           targetName: String?) throws -> (path: String, name: String)
+    {
+        switch projectType {
+        case let .xcodeProject(_, name):
+            guard let appPath = findBuiltApp(projectName: name) else {
+                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app for \(name)"))
+            }
+            return (appPath, name)
+
+        case let .swiftPackage(path, _):
+            let executables = try findSwiftPackageExecutables(at: path)
+
+            switch executables.count {
+            case 0:
+                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package"))
+            case 1:
+                let target = targetName ?? executables[0]
+                if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
+                    Self.logger
+                        .logAndExit(BuildError
+                            .buildFailed(
+                                "Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))",
+                            ))
+                }
+                let executablePath = "\(path)/.build/debug/\(target)"
+                return (executablePath, target)
+            default:
+                if let specifiedTarget = targetName {
+                    if executables.contains(specifiedTarget) {
+                        let executablePath = "\(path)/.build/debug/\(specifiedTarget)"
+                        return (executablePath, specifiedTarget)
+                    } else {
+                        Self.logger
+                            .logAndExit(BuildError
+                                .buildFailed(
+                                    "Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))",
+                                ))
+                    }
+                } else {
+                    let executableList = executables.joined(separator: ", ")
+                    Self.logger.logAndExit(BuildError.multipleExecutables(
+                        "Multiple executables found:\n \(executableList) " +
+                            "\n\nPlease specify which to install: swbuilder install --target <executable-name>",
+                    ))
+                }
+            }
         }
     }
 
