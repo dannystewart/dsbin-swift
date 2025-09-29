@@ -113,14 +113,11 @@ struct Install: ParsableCommand {
     @Option(name: .shortAndLong, help: "Target name for Swift packages with multiple executables.")
     var target: String?
 
-    @Flag(name: .long, help: "Force overwrite existing symlink.")
-    var force = false
-
     func run() throws {
         let builder = SwiftBuilder()
         let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
         let projectType = try builder.determineProjectType(at: inputPath)
-        try builder.installExecutable(projectType: projectType, targetName: target, force: force)
+        try builder.installExecutable(projectType: projectType, targetName: target)
     }
 }
 
@@ -138,21 +135,18 @@ extension SwiftBuilder {
         case invalidProject(String)
         case buildFailed(String)
         case multipleExecutables(String)
-        case alreadyInstalled(String)
 
         var logMessage: String {
             switch self {
             case let .invalidProject(msg): msg
             case let .buildFailed(msg): msg
             case let .multipleExecutables(msg): msg
-            case let .alreadyInstalled(msg): msg
             }
         }
 
         var isWarning: Bool {
             switch self {
             case .multipleExecutables: true
-            case .alreadyInstalled: true
             default: false
             }
         }
@@ -273,9 +267,8 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - projectType: The type of project to install.
     ///   - targetName: Optional target name for Swift packages with multiple executables.
-    ///   - force: Whether to force overwrite existing symlinks.
     /// - Throws: An error if the executable cannot be installed.
-    func installExecutable(projectType: ProjectType, targetName: String?, force: Bool) throws {
+    func installExecutable(projectType: ProjectType, targetName: String?) throws {
         // First, ensure the project is built
         try buildForDevelopment(projectType: projectType)
 
@@ -298,17 +291,9 @@ extension SwiftBuilder {
         // Create the symlink
         let symlinkPath = "\(localBinPath)/\(executableName)"
 
-        // Check if symlink already exists
+        // Remove existing symlink if it exists
         if fileManager.fileExists(atPath: symlinkPath) {
-            if force {
-                try fileManager.removeItem(atPath: symlinkPath)
-                Self.logger.info("Removed existing symlink: \(symlinkPath)")
-            } else {
-                Self.logger.logAndExit(BuildError
-                    .alreadyInstalled(
-                        "Symlink already exists at \(symlinkPath). Use --force to overwrite.",
-                    ))
-            }
+            try fileManager.removeItem(atPath: symlinkPath)
         }
 
         // Create the symlink
