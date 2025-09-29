@@ -37,6 +37,7 @@ struct SwiftConfigs: AsyncParsableCommand {
     class ConfigManager {
         let configs: [ConfigFile] = [
             ConfigFile(name: ".gitignore"),
+            ConfigFile(name: ".swiftformat"),
             ConfigFile(name: ".swiftlint.yml"),
             ConfigFile(name: "Package.swift", isTemplate: true),
             ConfigFile(name: "project.code-workspace", isTemplate: true),
