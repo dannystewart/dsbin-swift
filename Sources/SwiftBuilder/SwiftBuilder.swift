@@ -78,7 +78,7 @@ struct Archive: ParsableCommand {
 struct Prepare: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "prepare",
-        abstract: "Prepare release packages (DMG and ZIP) from an archived app."
+        abstract: "Prepare release packages (DMG and zip) from an archived app."
     )
 
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
@@ -202,7 +202,7 @@ extension SwiftBuilder {
         }
     }
 
-    /// Prepares release packages (DMG and ZIP) from an archived app.
+    /// Prepares release packages (DMG and zip) from an archived app.
     ///
     /// - Parameters:
     ///   - projectType: The type of project to prepare.
@@ -221,7 +221,7 @@ extension SwiftBuilder {
         }
     }
 
-    /// Prepares DMG and ZIP packages for an Xcode project.
+    /// Prepares DMG and zip packages for an Xcode project.
     ///
     /// - Parameters:
     ///   - projectName: The name of the project.
@@ -249,16 +249,16 @@ extension SwiftBuilder {
         try fileManager.createDirectory(atPath: outputPath, withIntermediateDirectories: true)
 
         // Create DMG
-        Self.logger.info("Creating DMG package...")
+        Self.logger.info("Creating DMG file...")
         try createDMG(
             appPath: appPath,
             outputPath: "\(outputPath)/\(projectName)-\(version).dmg",
             volumeName: projectName
         )
 
-        // Create ZIP
-        Self.logger.info("Creating ZIP package...")
-        try createZIP(
+        // Create zip
+        Self.logger.info("Creating zip file...")
+        try createZip(
             appPath: appPath,
             outputPath: "\(outputPath)/\(projectName)-\(version).zip"
         )
@@ -272,7 +272,7 @@ extension SwiftBuilder {
         Self.logger.info("Release packages created successfully: \(outputPath)")
     }
 
-    /// Creates a DMG package from an app.
+    /// Creates a DMG image from an app.
     ///
     /// - Parameters:
     ///   - appPath: The path to the .app bundle.
@@ -301,13 +301,13 @@ extension SwiftBuilder {
         }
     }
 
-    /// Creates a ZIP package from an app.
+    /// Creates a zip file from an app.
     ///
     /// - Parameters:
     ///   - appPath: The path to the .app bundle.
-    ///   - outputPath: The path where the ZIP should be created.
-    /// - Throws: An error if the ZIP cannot be created.
-    func createZIP(appPath: String, outputPath: String) throws {
+    ///   - outputPath: The path where the zip file should be created.
+    /// - Throws: An error if the zip file cannot be created.
+    func createZip(appPath: String, outputPath: String) throws {
         let dittoProcess = Process()
         dittoProcess.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         dittoProcess.arguments = [
@@ -321,7 +321,7 @@ extension SwiftBuilder {
 
         guard dittoProcess.terminationStatus == 0 else {
             Self.logger.logAndExit(BuildError
-                .buildFailed("ZIP creation failed with exit code \(dittoProcess.terminationStatus)")
+                .buildFailed("Zip creation failed with exit code \(dittoProcess.terminationStatus)")
             )
         }
     }
