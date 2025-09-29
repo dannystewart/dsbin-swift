@@ -30,6 +30,8 @@
             ".cursorindexingignore": true,
             ".history": true,
             ".specstory": true,
+            ".swiftformat": true,
+            ".swiftlint.yml": true,
             ".swiftpm": true,
             "env*": true,
             "venv": true
