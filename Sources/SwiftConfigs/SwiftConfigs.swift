@@ -6,7 +6,7 @@ import PolyText
 struct SwiftConfigs: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swconfigs",
-        abstract: "Download and manage Swift project configuration files"
+        abstract: "Download and manage Swift project configuration files",
     )
 
     struct ConfigFile {
@@ -49,10 +49,17 @@ struct SwiftConfigs: AsyncParsableCommand {
 
                 if fileExists {
                     if config.isTemplate { // Templates should never overwrite existing files
-                        Text.printColor("- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists", .cyan)
+                        Text.printColor(
+                            "- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists",
+                            .cyan,
+                        )
                         continue
                     } else { // Live configs may be updated, so ask if we should overwrite
-                        Text.printColor("File \(config.destinationURL.lastPathComponent) already exists. Overwrite? (y/N): ", .yellow, terminator: "")
+                        Text.printColor(
+                            "File \(config.destinationURL.lastPathComponent) already exists. Overwrite? (y/N): ",
+                            .yellow,
+                            terminator: "",
+                        )
                         let response = readLine()?.lowercased()
                         if response != "y", response != "yes" {
                             Text.printColor("- Skipping \(config.destinationURL.lastPathComponent)", .cyan)

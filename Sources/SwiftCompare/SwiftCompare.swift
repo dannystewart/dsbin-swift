@@ -6,7 +6,7 @@ import PolyText
 struct SwiftCompare: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "swcompare",
-        abstract: "Compare two lists and output common and unique elements."
+        abstract: "Compare two lists and output common and unique elements.",
     )
 
     @Flag(name: .long, help: "Compare case-sensitively ('Apple' and 'apple' are different).")
@@ -47,7 +47,7 @@ struct SwiftCompare: ParsableCommand {
         let unique2 = set2.subtracting(set1)
 
         return ComparisonResult(
-            common: Array(common), unique1: Array(unique1), unique2: Array(unique2)
+            common: Array(common), unique1: Array(unique1), unique2: Array(unique2),
         )
     }
 
@@ -70,7 +70,7 @@ struct SwiftCompare: ParsableCommand {
     func getTitle(_ defaultTitle: String) -> String {
         Text.printColor(
             "Enter a title for the \(defaultTitle) list (or press Enter to skip): ", .yellow,
-            terminator: ""
+            terminator: "",
         )
         if let input = readLine(), !input.isEmpty {
             return input
