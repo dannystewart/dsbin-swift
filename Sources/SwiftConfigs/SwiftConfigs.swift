@@ -62,9 +62,33 @@ struct SwiftConfigs: AsyncParsableCommand {
                             .cyan,
                         )
                         continue
-                    } else { // Live configs may be updated, so ask if we should overwrite
+                    } else { // Live configs may be updated, so show diff and ask if we should overwrite
+                        // Download the remote content first to compare
+                        let (remoteData, _) = try await URLSession.shared.data(from: config.sourceURL)
+                        let remoteContent = String(data: remoteData, encoding: .utf8) ?? ""
+
+                        // Read local content
+                        let localContent = try String(contentsOf: config.destinationURL, encoding: .utf8)
+
+                        // Show diff if content is different
+                        if localContent != remoteContent {
+                            print("\n--- Changes detected in \(config.destinationURL.lastPathComponent) ---")
+                            _ = PolyDiff.content(
+                                old: localContent,
+                                new: remoteContent,
+                                filename: config.destinationURL.lastPathComponent,
+                            )
+                            print("--- End of changes ---\n")
+                        } else {
+                            Text.printColor(
+                                "- No changes needed for \(config.destinationURL.lastPathComponent)",
+                                .cyan,
+                            )
+                            continue
+                        }
+
                         Text.printColor(
-                            "File \(config.destinationURL.lastPathComponent) already exists. Overwrite? (y/N): ",
+                            "Update \(config.destinationURL.lastPathComponent)? (y/N): ",
                             .yellow,
                             terminator: "",
                         )
@@ -76,10 +100,15 @@ struct SwiftConfigs: AsyncParsableCommand {
                             Text.printColor("- Skipping \(config.destinationURL.lastPathComponent)", .cyan)
                             continue
                         }
+
+                        // Write the updated content
+                        try remoteData.write(to: config.destinationURL)
+                        Text.printColor("✓ Updated \(config.destinationURL.lastPathComponent)", .green)
+                        continue
                     }
                 }
 
-                // Download the file from the remote source
+                // Download the file from the remote source for new files
                 let (data, _) = try await URLSession.shared.data(from: config.sourceURL)
                 try data.write(to: config.destinationURL)
                 Text.printColor("✓ Downloaded \(config.destinationURL.lastPathComponent)", .green)
