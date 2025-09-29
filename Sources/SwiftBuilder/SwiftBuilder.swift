@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import PolyLog
+import Polykit
 
 @main
 struct SwiftBuilder: ParsableCommand {

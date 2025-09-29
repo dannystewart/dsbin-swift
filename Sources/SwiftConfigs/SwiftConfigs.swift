@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import PolyText
+import Polykit
 
 @main
 struct SwiftConfigs: AsyncParsableCommand {
@@ -68,8 +68,11 @@ struct SwiftConfigs: AsyncParsableCommand {
                             .yellow,
                             terminator: "",
                         )
-                        let response = readLine()?.lowercased()
-                        if response != "y", response != "yes" {
+
+                        // Read single character without requiring Enter
+                        let response = PolyTerm.readSingleChar()
+                        print()
+                        if response.lowercased() != "y" {
                             Text.printColor("- Skipping \(config.destinationURL.lastPathComponent)", .cyan)
                             continue
                         }

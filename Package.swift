@@ -18,26 +18,26 @@ let package = Package(
             name: "SwiftBuilder",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "PolyLog", package: "polykit-swift"),
+                .product(name: "Polykit", package: "polykit-swift"),
             ],
-            path: "Sources/SwiftBuilder"
+            path: "Sources/SwiftBuilder",
         ),
         .executableTarget(
             name: "SwiftCompare",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "PolyText", package: "polykit-swift"),
+                .product(name: "Polykit", package: "polykit-swift"),
             ],
-            path: "Sources/SwiftCompare"
+            path: "Sources/SwiftCompare",
         ),
         .executableTarget(
             name: "SwiftConfigs",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "PolyText", package: "polykit-swift"),
+                .product(name: "Polykit", package: "polykit-swift"),
             ],
             path: "Sources/SwiftConfigs",
-            exclude: ["Templates"]
+            exclude: ["Templates"],
         ),
-    ]
+    ],
 )
