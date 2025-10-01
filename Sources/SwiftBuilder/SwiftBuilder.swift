@@ -7,7 +7,7 @@ import Polykit
 @main
 struct SwiftBuilder: ParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "swbuilder",
+        commandName: "swbuild",
         abstract: "Build Xcode projects or Swift packages with optional running or archiving.",
         subcommands: [Build.self, Run.self, Archive.self, Prepare.self, Install.self],
         defaultSubcommand: Build.self,
@@ -27,11 +27,15 @@ struct Build: ParsableCommand {
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
 
+    // Long-only to avoid collisions with app args.
+    @Option(name: .long, help: "Build configuration (Debug or Release).")
+    var configuration: String = "Debug"
+
     func run() throws {
         let builder = SwiftBuilder()
         let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
         let projectType = try builder.determineProjectType(at: inputPath)
-        try builder.buildForDevelopment(projectType: projectType)
+        try builder.buildForDevelopment(projectType: projectType, configuration: configuration)
     }
 }
 
@@ -49,8 +53,16 @@ struct Run: ParsableCommand {
     @Option(name: .shortAndLong, help: "Target name for Swift packages with multiple executables.")
     var target: String?
 
+    // Long-only to avoid collisions with app args
+    @Option(name: .long, help: "Build configuration (Debug or Release).")
+    var configuration: String = "Debug"
+
     @Flag(name: .long, help: "Kill existing process, build, then run.")
     var restart = false
+
+    // Pass-through arguments to the built executable (after --)
+    @Argument(parsing: .captureForPassthrough, help: "Arguments to pass to the executable.")
+    var arguments: [String] = []
 
     func run() throws {
         let builder = SwiftBuilder()
@@ -61,6 +73,8 @@ struct Run: ParsableCommand {
             shouldRun: true,
             targetName: target,
             restart: restart,
+            configuration: configuration,
+            runArguments: arguments,
         )
     }
 }
@@ -131,12 +145,18 @@ struct Install: ParsableCommand {
     }
 }
 
-// MARK: - Build and Process Extension
+// MARK: - Build and Process
 
 extension SwiftBuilder {
-    /// The type of project, either an Xcode project or a Swift package.
+    /// The type of Xcode container.
+    enum XcodeContainerKind {
+        case project
+        case workspace
+    }
+
+    /// The type of project, either an Xcode project/workspace or a Swift package.
     enum ProjectType {
-        case xcodeProject(path: String, name: String)
+        case xcode(kind: XcodeContainerKind, path: String, scheme: String)
         case swiftPackage(path: String, name: String)
     }
 
@@ -167,26 +187,23 @@ extension SwiftBuilder {
     /// - Parameter path: The path to determine the project type for.
     /// - Returns: The type of project.
     func determineProjectType(at path: String) throws -> ProjectType {
-        let fileManager = FileManager.default
-
-        // Check for Xcode project first
-        if let xcodeProject = findXcodeProject(in: path) {
-            let projectName = URL(fileURLWithPath: xcodeProject)
-                .deletingPathExtension()
-                .lastPathComponent
-            return .xcodeProject(path: xcodeProject, name: projectName)
+        // Prefer workspace over project if both exist
+        if let (containerPath, kind) = findXcodeContainer(in: path) {
+            let scheme = detectXcodeScheme(kind: kind, containerPath: containerPath)
+                ?? URL(fileURLWithPath: containerPath).deletingPathExtension().lastPathComponent
+            return .xcode(kind: kind, path: containerPath, scheme: scheme)
         }
 
         // Check for Swift package
         let packageSwiftPath = "\(path)/Package.swift"
-        if fileManager.fileExists(atPath: packageSwiftPath) {
+        if FileManager.default.fileExists(atPath: packageSwiftPath) {
             guard let packageName = extractPackageName(from: path) else {
                 Self.logger.logAndExit(BuildError.invalidProject("Found Package.swift but couldn't extract package name"))
             }
             return .swiftPackage(path: path, name: packageName)
         }
 
-        Self.logger.logAndExit(BuildError.invalidProject("No Xcode project or Package.swift found at \(path)"))
+        Self.logger.logAndExit(BuildError.invalidProject("No Xcode project/workspace or Package.swift found at \(path)"))
     }
 
     /// Builds a project for development.
@@ -196,18 +213,21 @@ extension SwiftBuilder {
     ///   - shouldRun: Whether to run the app after building.
     ///   - targetName: Optional target name for Swift packages with multiple executables.
     ///   - restart: Whether to kill existing process before running.
-    /// - Throws: An error if the project cannot be built.
+    ///   - configuration: Build configuration (Debug/Release).
+    ///   - runArguments: Arguments to pass to the executable when running.
     func buildForDevelopment(
         projectType: ProjectType,
         shouldRun: Bool = false,
         targetName: String? = nil,
         restart: Bool = false,
+        configuration: String = "Debug",
+        runArguments: [String] = [],
     ) throws {
         // Handle killing existing process if restart is requested
         if restart {
-            let projectName =
+            let projectName: String =
                 switch projectType {
-                case let .xcodeProject(_, name): name
+                case let .xcode(_, _, scheme): scheme
                 case let .swiftPackage(_, name): name
                 }
             killExistingProcess(named: projectName)
@@ -215,20 +235,26 @@ extension SwiftBuilder {
 
         // Build the project
         switch projectType {
-        case let .xcodeProject(path, name):
-            try buildXcodeProject(projectPath: path, projectName: name)
+        case let .xcode(kind, path, scheme):
+            try buildXcodeProject(containerKind: kind, containerPath: path, scheme: scheme, configuration: configuration)
         case let .swiftPackage(path, name):
-            try buildSwiftPackage(packagePath: path, packageName: name)
+            try buildSwiftPackage(packagePath: path, packageName: name, configuration: configuration)
         }
 
         // Run if requested
         if shouldRun || restart {
-            let projectName =
+            let projectName: String =
                 switch projectType {
-                case let .xcodeProject(_, name): name
+                case let .xcode(_, _, scheme): scheme
                 case let .swiftPackage(_, name): name
                 }
-            try runBuiltApp(projectName: projectName, projectType: projectType, targetName: targetName)
+            try runBuiltApp(
+                projectName: projectName,
+                projectType: projectType,
+                targetName: targetName,
+                configuration: configuration,
+                runArguments: runArguments,
+            )
         }
     }
 
@@ -238,11 +264,10 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - projectType: The type of project to archive.
     ///   - version: The version to archive the project with.
-    /// - Throws: An error if the project cannot be archived.
     func archiveForRelease(projectType: ProjectType, version: String) throws {
         switch projectType {
-        case let .xcodeProject(path, name):
-            try archiveXcodeProject(projectPath: path, projectName: name, version: version)
+        case let .xcode(kind, path, scheme):
+            try archiveXcodeProject(containerKind: kind, containerPath: path, scheme: scheme, version: version)
         case .swiftPackage:
             Self.logger.logAndExit(BuildError.buildFailed("Archiving is not supported for Swift packages. Use 'swift build -c release' instead."))
         }
@@ -253,11 +278,10 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - projectType: The type of project to prepare.
     ///   - version: The version for the release packages.
-    /// - Throws: An error if the packages cannot be created.
     func prepareReleaseForUpload(projectType: ProjectType, version: String) throws {
         switch projectType {
-        case let .xcodeProject(_, name):
-            try prepareXcodeProjectRelease(projectName: name, version: version)
+        case let .xcode(_, _, scheme):
+            try prepareXcodeProjectRelease(projectName: scheme, version: version)
         case .swiftPackage:
             Self.logger.logAndExit(BuildError.buildFailed("Release preparation is not supported for Swift packages. Only Xcode projects can be packaged."))
         }
@@ -268,7 +292,6 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - projectType: The type of project to install.
     ///   - targetName: Optional target name for Swift packages with multiple executables.
-    /// - Throws: An error if the executable cannot be installed.
     func installExecutable(projectType: ProjectType, targetName: String?) throws {
         // First, ensure the project is built
         try buildForDevelopment(projectType: projectType)
@@ -314,51 +337,56 @@ extension SwiftBuilder {
     ///   - projectType: The type of project.
     ///   - targetName: Optional target name for Swift packages with multiple executables.
     /// - Returns: A tuple containing the executable path and name.
-    /// - Throws: An error if the executable cannot be found.
     func getExecutableInfo(projectType: ProjectType, targetName: String?) throws -> (path: String, name: String) {
         switch projectType {
-        case let .xcodeProject(_, name):
-            guard let appPath = findBuiltApp(projectName: name) else {
-                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app for \(name)"))
+        case let .xcode(_, _, scheme):
+            guard let appPath = findBuiltApp(projectName: scheme) else {
+                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app for \(scheme)."))
             }
-            return (appPath, name)
+            return (appPath, scheme)
 
         case let .swiftPackage(path, _):
             let executables = try findSwiftPackageExecutables(at: path)
 
+            func firstExistingSPMPath(for name: String) -> String {
+                let debugPath = "\(path)/.build/debug/\(name)"
+                let releasePath = "\(path)/.build/release/\(name)"
+                if FileManager.default.fileExists(atPath: debugPath) { return debugPath }
+                if FileManager.default.fileExists(atPath: releasePath) { return releasePath }
+                // Default to debug path if neither exists yet
+                return debugPath
+            }
+
             switch executables.count {
             case 0:
-                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package"))
+                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package."))
             case 1:
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
                     Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                 }
-                let executablePath = "\(path)/.build/debug/\(target)"
-                return (executablePath, target)
+                return (firstExistingSPMPath(for: target), target)
             default:
                 if let specifiedTarget = targetName {
                     if executables.contains(specifiedTarget) {
-                        let executablePath = "\(path)/.build/debug/\(specifiedTarget)"
-                        return (executablePath, specifiedTarget)
+                        return (firstExistingSPMPath(for: specifiedTarget), specifiedTarget)
                     } else {
                         Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                     }
                 } else {
                     let executableList = executables.joined(separator: ", ")
-                    Self.logger.logAndExit(BuildError.multipleExecutables("Multiple executables found:\n \(executableList)\n\nPlease specify which to install: swbuilder install --target <executable-name>"))
+                    Self.logger.logAndExit(BuildError.multipleExecutables(
+                        "Multiple executables found:\n \(executableList)\n\nPlease specify which to install: swbuild install --target <executable-name>"))
                 }
             }
         }
     }
 
-    /// Prepares DMG and zip packages for an Xcode project. This is hardcoded to look for the app
-    /// in`~/Downloads` and to export the release to the `releases` folder for the project.
+    /// Prepares DMG and zip packages for an Xcode project.
     ///
     /// - Parameters:
     ///   - projectName: The name of the project.
     ///   - version: The version for the packages.
-    /// - Throws: An error if the packages cannot be created.
     func prepareXcodeProjectRelease(projectName: String, version: String) throws {
         Text.printColor("Preparing release packages for \(projectName) \(version)...", .green)
 
@@ -370,7 +398,7 @@ extension SwiftBuilder {
         // Check if the app exists in Downloads
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: appPath) else {
-            Self.logger.logAndExit(BuildError.buildFailed("App not found at \(appPath). Please ensure the app is exported to Downloads first."))
+            Self.logger.logAndExit(BuildError.buildFailed("App not found at \(appPath). Please ensure the app is exported to ~/Downloads."))
         }
 
         // Create output directory if needed
@@ -406,7 +434,6 @@ extension SwiftBuilder {
     ///   - appPath: The path to the .app bundle.
     ///   - outputPath: The path where the DMG should be created.
     ///   - volumeName: The name for the DMG volume.
-    /// - Throws: An error if the DMG cannot be created.
     func createDMG(appPath: String, outputPath: String, volumeName: String) throws {
         let hdiutilProcess = Process()
         hdiutilProcess.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
@@ -432,7 +459,6 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - appPath: The path to the .app bundle.
     ///   - outputPath: The path where the zip file should be created.
-    /// - Throws: An error if the zip file cannot be created.
     func createZip(appPath: String, outputPath: String) throws {
         let dittoProcess = Process()
         dittoProcess.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
@@ -450,21 +476,28 @@ extension SwiftBuilder {
         }
     }
 
-    /// Builds an Xcode project.
+    /// Builds an Xcode project or workspace.
     ///
     /// - Parameters:
-    ///   - projectPath: The path to the Xcode project.
-    ///   - projectName: The name of the Xcode project.
-    /// - Throws: An error if the Xcode project cannot be built.
-    func buildXcodeProject(projectPath: String, projectName: String) throws {
-        Text.printColor("Building Xcode project: \(projectName)", .green)
+    ///   - containerKind: Whether this is a project or workspace.
+    ///   - containerPath: The .xcodeproj or .xcworkspace path.
+    ///   - scheme: The scheme to build.
+    ///   - configuration: Debug or Release.
+    func buildXcodeProject(containerKind: XcodeContainerKind, containerPath: String, scheme: String, configuration: String) throws {
+        Text.printColor("Building Xcode \(containerKind == .workspace ? "workspace" : "project"): \(scheme) [\(configuration)]", .green)
 
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        buildProcess.arguments = [
-            "xcodebuild", "-project", projectPath, "-scheme", projectName,
-            "-configuration", "Debug", "build",
-        ]
+
+        var args = ["xcodebuild"]
+        switch containerKind {
+        case .project:
+            args += ["-project", containerPath]
+        case .workspace:
+            args += ["-workspace", containerPath]
+        }
+        args += ["-scheme", scheme, "-configuration", configuration, "build"]
+        buildProcess.arguments = args
 
         // Stream output directly
         buildProcess.standardOutput = FileHandle.standardOutput
@@ -485,13 +518,18 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - packagePath: The path to the Swift package.
     ///   - packageName: The name of the Swift package.
-    /// - Throws: An error if the Swift package cannot be built.
-    func buildSwiftPackage(packagePath: String, packageName: String) throws {
-        Text.printColor("Building Swift package: \(packageName)", .green)
+    ///   - configuration: Debug or Release.
+    func buildSwiftPackage(packagePath: String, packageName: String, configuration: String) throws {
+        Text.printColor("Building Swift package: \(packageName) [\(configuration)]", .green)
+
+        let swiftpmConfig = configuration.lowercased()
+        guard swiftpmConfig == "debug" || swiftpmConfig == "release" else {
+            Self.logger.logAndExit(BuildError.buildFailed("Invalid SwiftPM configuration '\(configuration)'. Use Debug or Release."))
+        }
 
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-        buildProcess.arguments = ["build"]
+        buildProcess.arguments = ["build", "-c", swiftpmConfig]
         buildProcess.currentDirectoryPath = packagePath
 
         // Stream output directly
@@ -508,26 +546,32 @@ extension SwiftBuilder {
         Text.printColor("Build completed successfully!", .green)
     }
 
-    /// Archives an Xcode project for release.
+    /// Archives an Xcode project/workspace for release.
     ///
     /// - Parameters:
-    ///   - projectPath: The path to the Xcode project.
-    ///   - projectName: The name of the Xcode project.
+    ///   - containerKind: Whether this is a project or workspace.
+    ///   - containerPath: The .xcodeproj or .xcworkspace path.
+    ///   - scheme: The scheme to archive.
     ///   - version: The version to archive the project with.
-    /// - Throws: An error if the Xcode project cannot be archived.
-    func archiveXcodeProject(projectPath: String, projectName: String, version: String) throws {
-        Text.printColor("Archiving \(projectName) with version \(version)...", .green)
+    func archiveXcodeProject(containerKind: XcodeContainerKind, containerPath: String, scheme: String, version: String) throws {
+        Text.printColor("Archiving \(scheme) with version \(version)...", .green)
 
         // First, set the version in the project
-        try setProjectVersion(projectPath: projectPath, version: version)
+        try setProjectVersion(projectPath: containerPath, version: version)
 
         // Now archive
         let archiveProcess = Process()
         archiveProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        archiveProcess.arguments = [
-            "xcodebuild", "-project", projectPath, "-scheme", projectName,
-            "-configuration", "Release", "archive",
-        ]
+
+        var args = ["xcodebuild"]
+        switch containerKind {
+        case .project:
+            args += ["-project", containerPath]
+        case .workspace:
+            args += ["-workspace", containerPath]
+        }
+        args += ["-scheme", scheme, "-configuration", "Release", "archive"]
+        archiveProcess.arguments = args
 
         // Stream output directly
         archiveProcess.standardOutput = FileHandle.standardOutput
@@ -546,9 +590,8 @@ extension SwiftBuilder {
     /// Sets the version of a project.
     ///
     /// - Parameters:
-    ///   - projectPath: The path to the project.
+    ///   - projectPath: The path to the project/workspace (we use its parent dir to run agvtool).
     ///   - version: The version to set.
-    /// - Throws: An error if the version cannot be set.
     func setProjectVersion(projectPath: String, version: String) throws {
         Text.printColor("Setting version to: \(version)", .green)
 
@@ -580,32 +623,41 @@ extension SwiftBuilder {
 
         let killProcess = Process()
         killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
-        killProcess.arguments = ["-f", processName]
+        // -x for exact match; -f is broader and can kill unintended matches
+        killProcess.arguments = ["-x", processName]
 
         // It doesn't matter if this fails since the process might not be running
         try? killProcess.run()
         killProcess.waitUntilExit()
     }
 
-    /// Runs a built app.
+    /// Runs a built app or executable.
     ///
     /// - Parameters:
-    ///   - projectName: The name of the project.
+    ///   - projectName: The name of the project/scheme.
     ///   - projectType: The type of project.
     ///   - targetName: Optional target name for Swift packages with multiple executables.
-    /// - Throws: An error if the app cannot be run.
-    func runBuiltApp(projectName: String, projectType: ProjectType, targetName: String? = nil) throws {
+    ///   - configuration: Build configuration (Debug/Release).
+    ///   - runArguments: Arguments to pass to the executable.
+    func runBuiltApp(
+        projectName: String,
+        projectType: ProjectType,
+        targetName: String? = nil,
+        configuration: String = "Debug",
+        runArguments: [String] = [],
+    ) throws {
         switch projectType {
-        case .xcodeProject:
+        case .xcode:
             // Xcode projects typically have one main executable
-            guard let appPath = findBuiltApp(projectName: projectName) else {
-                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app for \(projectName)"))
+            guard let appPath = findBuiltApp(projectName: projectName, configuration: configuration) else {
+                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app/executable for \(projectName)"))
             }
 
-            Text.printColor("Running app: \(appPath)", .green)
+            Text.printColor("Running: \(appPath)", .green)
 
             let runProcess = Process()
             runProcess.executableURL = URL(fileURLWithPath: appPath)
+            runProcess.arguments = runArguments
             runProcess.standardOutput = FileHandle.standardOutput
             runProcess.standardError = FileHandle.standardError
             runProcess.standardInput = FileHandle.standardInput
@@ -620,25 +672,24 @@ extension SwiftBuilder {
             case 0:
                 Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package"))
             case 1:
-                // If user specified a target, validate it exists; otherwise use the single target
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
                     Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                 }
                 Text.printColor("Running Swift package executable: \(target)", .green)
-                try runSwiftPackageTarget(at: path, target: target)
+                try runSwiftPackageTarget(at: path, target: target, configuration: configuration, runArguments: runArguments)
             default:
-                // Multiple executables - user must specify which one
                 if let specifiedTarget = targetName {
                     if executables.contains(specifiedTarget) {
                         Text.printColor("Running Swift package executable: \(specifiedTarget)", .green)
-                        try runSwiftPackageTarget(at: path, target: specifiedTarget)
+                        try runSwiftPackageTarget(at: path, target: specifiedTarget, configuration: configuration, runArguments: runArguments)
                     } else {
                         Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                     }
                 } else {
                     let executableList = executables.joined(separator: ", ")
-                    Self.logger.logAndExit(BuildError.buildFailed("Multiple executables found:\n \(executableList)\n\nPlease specify which to run: swbuilder --run <executable-name>"))
+                    Self.logger.logAndExit(BuildError.multipleExecutables(
+                        "Multiple executables found:\n \(executableList)\n\nPlease specify which to run: swbuild run --target <executable-name>"))
                 }
             }
         }
@@ -647,7 +698,6 @@ extension SwiftBuilder {
     /// Checks if a path is a Swift package.
     ///
     /// - Parameter path: The path to check.
-    /// - Returns: True if the path is a Swift package, false otherwise.
     func isSwiftPackage(in path: String) -> Bool {
         let packageSwiftPath = "\(path)/Package.swift"
         return FileManager.default.fileExists(atPath: packageSwiftPath)
@@ -656,7 +706,6 @@ extension SwiftBuilder {
     /// Extracts the name of a Swift package from a path.
     ///
     /// - Parameter path: The path to extract the package name from.
-    /// - Returns: The name of the Swift package.
     func extractPackageName(from path: String) -> String? {
         let packageSwiftPath = "\(path)/Package.swift"
         do {
@@ -680,48 +729,109 @@ extension SwiftBuilder {
         return nil
     }
 
-    /// Finds all executable products defined in a Swift package.
+    /// Finds all executable products or targets using `swift package dump-package`.
     ///
     /// - Parameter path: The path to the Swift package directory.
-    /// - Returns: An array of executable product names.
-    /// - Throws: BuildError if Package.swift cannot be read or parsed.
+    /// - Returns: An array of executable product names (falls back to executable target names if needed).
     func findSwiftPackageExecutables(at path: String) throws -> [String] {
-        // Parse Package.swift to find executable products
-        let packageSwiftPath = "\(path)/Package.swift"
+        let dump = Process()
+        dump.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
+        dump.arguments = ["package", "dump-package"]
+        dump.currentDirectoryPath = path
 
-        do {
-            let content = try String(contentsOfFile: packageSwiftPath, encoding: .utf8)
+        let outPipe = Pipe()
+        dump.standardOutput = outPipe
+        dump.standardError = Pipe()
 
-            // Look for executable products - this regex finds .executable patterns
-            let executablePattern = #"\.executable\s*\(\s*name:\s*"([^"]+)""#
-            let executableRegex = try NSRegularExpression(pattern: executablePattern)
+        try dump.run()
+        dump.waitUntilExit()
 
-            var executables: [String] = []
-            let range = NSRange(content.startIndex..., in: content)
-            let matches = executableRegex.matches(in: content, range: range)
+        guard dump.terminationStatus == 0 else {
+            Self.logger.logAndExit(BuildError.buildFailed("Failed to dump package manifest (exit code \(dump.terminationStatus))"))
+        }
 
-            for match in matches {
-                if let nameRange = Range(match.range(at: 1), in: content) {
-                    executables.append(String(content[nameRange]))
+        let data = outPipe.fileHandleForReading.readDataToEndOfFile()
+        guard !data.isEmpty else {
+            return []
+        }
+
+        struct DumpPackage: Decodable {
+            struct Product: Decodable {
+                struct ProductType: Decodable {
+                    // In dump-package JSON, type is an object with a single key indicating the type
+                    // We model common possibilities as optional arrays (values may be null or arrays)
+                    let executable: [String]?
+                    let library: [String]?
+                    let test: [String]?
+                    let plugin: [String]?
+                    let macro: [String]?
+
+                    var isExecutable: Bool { executable != nil }
                 }
+
+                let name: String
+                let type: ProductType
             }
 
-            return executables
-        } catch {
-            Self.logger.logAndExit(BuildError.buildFailed("Could not read Package.swift: \(error)"))
+            struct Target: Decodable {
+                let name: String
+                let type: String? // "executable", "library", etc.
+            }
+
+            let products: [Product]?
+            let targets: [Target]?
         }
+
+        let decoder = JSONDecoder()
+        let manifest: DumpPackage
+        do {
+            manifest = try decoder.decode(DumpPackage.self, from: data)
+        } catch {
+            Self.logger.logAndExit(BuildError.buildFailed("Could not parse dump-package JSON: \(error)"))
+        }
+
+        // Prefer executable products
+        var names: [String] = []
+        if let products = manifest.products {
+            for product in products where product.type.isExecutable {
+                names.append(product.name)
+            }
+        }
+
+        // Fallback to executable targets if no executable products were found
+        if names.isEmpty, let targets = manifest.targets {
+            for target in targets where target.type == "executable" {
+                if !names.contains(target.name) {
+                    names.append(target.name)
+                }
+            }
+        }
+
+        return names
     }
 
-    /// Runs a specific executable target in a Swift package.
+    /// Runs a specific executable target/product in a Swift package.
     ///
     /// - Parameters:
     ///   - path: The path to the Swift package directory.
-    ///   - target: The name of the executable target to run.
-    /// - Throws: An error if the target cannot be executed.
-    func runSwiftPackageTarget(at path: String, target: String) throws {
+    ///   - target: The name of the executable target/product to run.
+    ///   - configuration: The build configuration to use.
+    ///   - runArguments: Arguments to pass to the executable.
+    func runSwiftPackageTarget(at path: String, target: String, configuration: String, runArguments: [String]) throws {
+        let swiftpmConfig = configuration.lowercased()
+        guard swiftpmConfig == "debug" || swiftpmConfig == "release" else {
+            Self.logger.logAndExit(BuildError.buildFailed("Invalid SwiftPM configuration '\(configuration)'. Use Debug or Release."))
+        }
+
         let runProcess = Process()
         runProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
-        runProcess.arguments = ["run", target]
+        // Pass configuration and target/product, then "--" and arguments
+        var args = ["run", "-c", swiftpmConfig, target]
+        if !runArguments.isEmpty {
+            args.append("--")
+            args.append(contentsOf: runArguments)
+        }
+        runProcess.arguments = args
         runProcess.currentDirectoryPath = path
 
         runProcess.standardOutput = FileHandle.standardOutput
@@ -732,18 +842,20 @@ extension SwiftBuilder {
         runProcess.waitUntilExit()
     }
 
-    /// Finds an Xcode project in a path.
+    /// Finds an Xcode project/workspace in a path, preferring workspace.
     ///
-    /// - Parameter path: The path to find the Xcode project in.
-    /// - Returns: The path to the Xcode project.
-    func findXcodeProject(in path: String = FileManager.default.currentDirectoryPath) -> String? {
-        // Look for .xcodeproj files in the given path
+    /// - Parameter path: The path to search.
+    /// - Returns: (path, kind) if found.
+    func findXcodeContainer(in path: String = FileManager.default.currentDirectoryPath) -> (String, XcodeContainerKind)? {
         let fileManager = FileManager.default
 
         do {
             let contents = try fileManager.contentsOfDirectory(atPath: path)
-            for item in contents where item.hasSuffix(".xcodeproj") {
-                return "\(path)/\(item)"
+            if let workspace = contents.first(where: { $0.hasSuffix(".xcworkspace") }) {
+                return ("\(path)/\(workspace)", .workspace)
+            }
+            if let project = contents.first(where: { $0.hasSuffix(".xcodeproj") }) {
+                return ("\(path)/\(project)", .project)
             }
         } catch {
             return nil
@@ -752,36 +864,98 @@ extension SwiftBuilder {
         return nil
     }
 
-    /// Finds a built app in the `DerivedData` directory.
+    /// Attempts to detect an appropriate scheme for the given container using xcodebuild -list -json.
     ///
-    /// - Parameter projectName: The name of the project.
-    /// - Returns: The path to the built app.
-    func findBuiltApp(projectName: String) -> String? {
-        // Look in DerivedData for the built app
+    /// - Parameters:
+    ///   - kind: Whether this is a project or workspace.
+    ///   - containerPath: The .xcodeproj or .xcworkspace path.
+    /// - Returns: A scheme name if detected.
+    func detectXcodeScheme(kind: XcodeContainerKind, containerPath: String) -> String? {
+        let listProcess = Process()
+        listProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        var args = ["xcodebuild", "-list", "-json"]
+        switch kind {
+        case .project:
+            args += ["-project", containerPath]
+        case .workspace:
+            args += ["-workspace", containerPath]
+        }
+        listProcess.arguments = args
+
+        let pipe = Pipe()
+        listProcess.standardOutput = pipe
+        listProcess.standardError = Pipe()
+
+        do {
+            try listProcess.run()
+        } catch {
+            return nil
+        }
+
+        listProcess.waitUntilExit()
+        guard listProcess.terminationStatus == 0 else {
+            return nil
+        }
+
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        guard !data.isEmpty else { return nil }
+
+        struct XcodeContainerInfo: Decodable {
+            let name: String?
+            let schemes: [String]?
+        }
+        struct XcodeListOutput: Decodable {
+            let project: XcodeContainerInfo?
+            let workspace: XcodeContainerInfo?
+        }
+
+        guard let output = try? JSONDecoder().decode(XcodeListOutput.self, from: data) else {
+            return nil
+        }
+
+        let schemes = (kind == .project ? output.project?.schemes : output.workspace?.schemes) ?? []
+        if schemes.isEmpty { return nil }
+
+        // Prefer a scheme that matches the container name, otherwise just the first scheme
+        let baseName = URL(fileURLWithPath: containerPath).deletingPathExtension().lastPathComponent
+        if let matching = schemes.first(where: { $0 == baseName }) {
+            return matching
+        }
+        return schemes.first
+    }
+
+    /// Finds a built app or CLI executable in DerivedData or local build directories.
+    ///
+    /// - Parameters:
+    ///   - projectName: The name of the scheme/product.
+    ///   - configuration: Build configuration (Debug/Release).
+    /// - Returns: The path to the built binary to execute.
+    func findBuiltApp(projectName: String, configuration: String = "Debug") -> String? {
         let derivedDataPath = "\(NSHomeDirectory())/Library/Developer/Xcode/DerivedData"
         let fileManager = FileManager.default
 
+        // Search in DerivedData for both app bundle executables and CLI products
         do {
             let contents = try fileManager.contentsOfDirectory(atPath: derivedDataPath)
-            for item in contents where item.hasPrefix(projectName) {
-                let appPaths = [
-                    "\(derivedDataPath)/\(item)/Build/Products/Debug/\(projectName).app/Contents/MacOS/\(projectName)",
-                    "\(derivedDataPath)/\(item)/Build/Products/Release/\(projectName).app/Contents/MacOS/\(projectName)",
-                ]
-                for buildPath in appPaths where fileManager.fileExists(atPath: buildPath) {
-                    return buildPath
+            for item in contents where item.contains(projectName) {
+                let appExecPath = "\(derivedDataPath)/\(item)/Build/Products/\(configuration)/\(projectName).app/Contents/MacOS/\(projectName)"
+                if fileManager.fileExists(atPath: appExecPath) {
+                    return appExecPath
+                }
+                let cliExecPath = "\(derivedDataPath)/\(item)/Build/Products/\(configuration)/\(projectName)"
+                if fileManager.fileExists(atPath: cliExecPath) {
+                    return cliExecPath
                 }
             }
         } catch {
             // Continue to fallback
         }
-        // Look in the local build directory for SPM builds
+
+        // Fallback to local SPM-style build directories
         let currentDirectory = FileManager.default.currentDirectoryPath
         let localBuildPaths = [
-            "\(currentDirectory)/.build/debug/\(projectName)",
-            "\(currentDirectory)/.build/release/\(projectName)",
-            "\(currentDirectory)/build/debug/\(projectName)",
-            "\(currentDirectory)/build/release/\(projectName)",
+            "\(currentDirectory)/.build/\(configuration.lowercased())/\(projectName)",
+            "\(currentDirectory)/build/\(configuration.lowercased())/\(projectName)",
         ]
 
         for buildPath in localBuildPaths where fileManager.fileExists(atPath: buildPath) {
