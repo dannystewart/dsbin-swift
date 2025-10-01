@@ -2,6 +2,8 @@ import ArgumentParser
 import Foundation
 import Polykit
 
+// MARK: - SwiftBuilder
+
 @main
 struct SwiftBuilder: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -14,7 +16,7 @@ struct SwiftBuilder: ParsableCommand {
     private static let logger = PolyLog(simple: true)
 }
 
-// MARK: - Subcommands
+// MARK: - Build
 
 struct Build: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -32,6 +34,8 @@ struct Build: ParsableCommand {
         try builder.buildForDevelopment(projectType: projectType)
     }
 }
+
+// MARK: - Run
 
 struct Run: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -61,6 +65,8 @@ struct Run: ParsableCommand {
     }
 }
 
+// MARK: - Archive
+
 struct Archive: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "archive",
@@ -81,6 +87,8 @@ struct Archive: ParsableCommand {
     }
 }
 
+// MARK: - Prepare
+
 struct Prepare: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "prepare",
@@ -100,6 +108,8 @@ struct Prepare: ParsableCommand {
         try builder.prepareReleaseForUpload(projectType: projectType, version: version)
     }
 }
+
+// MARK: - Install
 
 struct Install: ParsableCommand {
     static let configuration = CommandConfiguration(
