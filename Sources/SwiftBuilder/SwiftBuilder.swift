@@ -433,6 +433,8 @@ extension SwiftBuilder {
         // Install to /Applications if requested
         if shouldInstall {
             try installAppToApplications(appPath: appPath, appName: projectName)
+            // Clean up the original app from Downloads since it's now installed
+            try cleanupOriginalApp(from: appPath)
         }
 
         // Open the releases folder
@@ -485,7 +487,23 @@ extension SwiftBuilder {
         let attributes = [FileAttributeKey.posixPermissions: 0o755]
         try fileManager.setAttributes(attributes, ofItemAtPath: destinationPath)
 
-        Text.printColor("✅ \(appName) installed successfully to /Applications!", .green)
+        Text.printColor("\(appName) installed successfully to /Applications!", .green)
+    }
+
+    /// Cleans up the original app from Downloads after installation.
+    ///
+    /// - Parameter appPath: The path to the original app bundle to remove.
+    func cleanupOriginalApp(from appPath: String) throws {
+        let fileManager = FileManager.default
+
+        // Only clean up if the app exists
+        guard fileManager.fileExists(atPath: appPath) else {
+            return // Nothing to clean up
+        }
+
+        Text.printColor("Cleaning up original app from Downloads...", .green)
+        try fileManager.removeItem(atPath: appPath)
+        Text.printColor("Original app removed from Downloads", .green)
     }
 
     /// Creates a DMG image from an app.
