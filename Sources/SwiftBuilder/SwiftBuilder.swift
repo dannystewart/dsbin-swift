@@ -131,7 +131,7 @@ struct Install: ParsableCommand {
     }
 }
 
-// MARK: - Project Types and Errors
+// MARK: - SwiftBuilder
 
 extension SwiftBuilder {
     /// The type of project, either an Xcode project or a Swift package.
@@ -374,7 +374,8 @@ extension SwiftBuilder {
         }
     }
 
-    /// Prepares DMG and zip packages for an Xcode project.
+    /// Prepares DMG and zip packages for an Xcode project. NOTE: This is hardcoded to look for the .app bundle in
+    /// `~/Downloads` and to export the release to the `releases` folder alongside the project.
     ///
     /// - Parameters:
     ///   - projectName: The name of the project.
