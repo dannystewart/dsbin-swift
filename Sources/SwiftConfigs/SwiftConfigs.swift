@@ -84,13 +84,11 @@ struct SwiftConfigs: AsyncParsableCommand {
         // Helper method to process individual configs
         private func processConfig(_ config: ConfigFile, status: ConfigStatus) async throws {
             if status.fileExists {
-                if config.isTemplate { // Templates should never overwrite existing files
-                    Text.printColor(
-                        "- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists",
-                        .cyan,
-                    )
+                if config.isTemplate {
+                    // Templates should never overwrite existing files
+                    Text.printColor("- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists", .cyan)
                     return
-                } else { // Live configs may be updated, so show diff and ask if we should overwrite
+                } else {
                     // Download the remote content first to compare
                     let (remoteData, _) = try await URLSession.shared.data(from: config.sourceURL)
                     let remoteContent = String(data: remoteData, encoding: .utf8) ?? ""
@@ -100,29 +98,16 @@ struct SwiftConfigs: AsyncParsableCommand {
 
                     // Show diff if content is different
                     if localContent != remoteContent {
-                        Text.printColor(
-                            "\n--- Changes detected in \(config.destinationURL.lastPathComponent) ---",
-                            .yellow,
-                        )
-                        _ = PolyDiff.content(
-                            old: localContent,
-                            new: remoteContent,
-                            filename: config.destinationURL.lastPathComponent,
-                        )
+                        Text.printColor("\n--- Changes detected in \(config.destinationURL.lastPathComponent) ---", .yellow)
+                        _ = PolyDiff.content(old: localContent, new: remoteContent, filename: config.destinationURL.lastPathComponent)
                         Text.printColor("--- End of changes ---\n", .yellow)
                     } else {
-                        Text.printColor(
-                            "- No changes needed for \(config.destinationURL.lastPathComponent)",
-                            .cyan,
-                        )
+                        Text.printColor("- No changes needed for \(config.destinationURL.lastPathComponent)", .cyan)
                         return
                     }
 
-                    Text.printColor(
-                        "Update \(config.destinationURL.lastPathComponent)? (y/N): ",
-                        .yellow,
-                        terminator: "",
-                    )
+                    // Confirm whether we should overwrite the existing file
+                    Text.printColor("Update \(config.destinationURL.lastPathComponent)? (y/N): ", .yellow, terminator: "")
 
                     // Read single character without requiring Enter
                     let response = PolyTerm.readSingleChar()
