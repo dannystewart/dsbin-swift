@@ -1,4 +1,5 @@
 import ArgumentParser
+import CommonCrypto
 import Foundation
 import Polykit
 
@@ -109,11 +110,11 @@ struct Prepare: ParsableCommand {
         abstract: "Prepare release packages (DMG and zip) from an archived app.",
     )
 
-    @Argument(help: "Path to directory with Xcode project or Package.swift.")
-    var projectPath: String?
-
     @Argument(help: "Version for the release packages (e.g., 1.2.3).")
     var version: String
+
+    @Argument(help: "Path to directory with Xcode project or Package.swift.")
+    var projectPath: String?
 
     func run() throws {
         let builder = SwiftBuilder()
@@ -406,11 +407,16 @@ extension SwiftBuilder {
 
         // Create DMG
         Text.printColor("Creating DMG file...", .green)
+        let dmgPath = "\(outputPath)/\(projectName)-\(version).dmg"
         try createDMG(
             appPath: appPath,
-            outputPath: "\(outputPath)/\(projectName)-\(version).dmg",
+            outputPath: dmgPath,
             volumeName: projectName,
         )
+
+        // Calculate and display SHA256 hash for Homebrew
+        Text.printColor("Calculating SHA256 hash...", .green)
+        let sha256Hash = try calculateSHA256Hash(for: dmgPath)
 
         // Create zip
         Text.printColor("Creating zip file...", .green)
@@ -426,6 +432,23 @@ extension SwiftBuilder {
         try openProcess.run()
 
         Text.printColor("Release packages created successfully: \(outputPath)", .green)
+        Text.printColor("SHA256: \(sha256Hash)", .cyan)
+    }
+
+    /// Calculates the SHA256 hash of a file.
+    ///
+    /// - Parameter filePath: The path to the file to hash.
+    /// - Returns: The SHA256 hash as a hexadecimal string.
+    func calculateSHA256Hash(for filePath: String) throws -> String {
+        let fileURL = URL(fileURLWithPath: filePath)
+        let data = try Data(contentsOf: fileURL)
+
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        _ = data.withUnsafeBytes { bytes in
+            CC_SHA256(bytes.bindMemory(to: UInt8.self).baseAddress, CC_LONG(data.count), &hash)
+        }
+
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 
     /// Creates a DMG image from an app.
@@ -584,7 +607,7 @@ extension SwiftBuilder {
             Self.logger.logAndExit(BuildError.buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)"))
         }
 
-        Text.printColor("Archive complete! Now use Xcode Organizer to distribute.", .green)
+        Text.printColor("Archive complete! Now you can use Xcode Organizer for distribution.", .green)
     }
 
     /// Sets the version of a project.
@@ -597,22 +620,105 @@ extension SwiftBuilder {
 
         let projectDir = URL(fileURLWithPath: projectPath).deletingLastPathComponent().path
 
-        // Set both version and build number to the same value
+        // For prerelease versions, we need to handle them differently
+        // agvtool expects standard semantic versions, so we'll use a workaround
+        let (marketingVersion, buildNumber) = parseVersionForAgvtool(version)
+
+        // Set marketing version
         let setVersionProcess = Process()
         setVersionProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        setVersionProcess.arguments = ["agvtool", "new-marketing-version", version]
+        setVersionProcess.arguments = ["agvtool", "new-marketing-version", marketingVersion]
         setVersionProcess.currentDirectoryPath = projectDir
 
         try setVersionProcess.run()
         setVersionProcess.waitUntilExit()
 
+        guard setVersionProcess.terminationStatus == 0 else {
+            Self.logger.logAndExit(BuildError.buildFailed("Failed to set marketing version '\(marketingVersion)' with exit code \(setVersionProcess.terminationStatus)"))
+        }
+
+        // Set build number
         let setBuildProcess = Process()
         setBuildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        setBuildProcess.arguments = ["agvtool", "new-version", "-all", version]
+        setBuildProcess.arguments = ["agvtool", "new-version", "-all", buildNumber]
         setBuildProcess.currentDirectoryPath = projectDir
 
         try setBuildProcess.run()
         setBuildProcess.waitUntilExit()
+
+        guard setBuildProcess.terminationStatus == 0 else {
+            Self.logger.logAndExit(BuildError.buildFailed("Failed to set build number '\(buildNumber)' with exit code \(setBuildProcess.terminationStatus)"))
+        }
+    }
+
+    /// Parses a version string to extract components suitable for agvtool.
+    ///
+    /// - Parameter version: The version string to parse.
+    /// - Returns: A tuple of (marketingVersion, buildNumber) where marketingVersion is agvtool-compatible.
+    func parseVersionForAgvtool(_ version: String) -> (marketingVersion: String, buildNumber: String) {
+        // If it's already a standard semantic version (no prerelease identifiers), use as-is
+        if !version.contains("-"), !version.contains("+") {
+            return (version, version)
+        }
+
+        // Handle prerelease versions according to semantic versioning standards
+        if let prereleaseVersion = parsePrereleaseVersion(version) {
+            return prereleaseVersion
+        }
+
+        // For versions with build metadata like "1.0.0+123", extract the version part
+        let buildComponents = version.split(separator: "+", maxSplits: 1)
+        if buildComponents.count == 2 {
+            let versionPart = String(buildComponents[0])
+            return (versionPart, version)
+        }
+
+        // Fallback: use the version as-is for both
+        return (version, version)
+    }
+
+    /// Parses a prerelease version string according to semantic versioning standards.
+    ///
+    /// - Parameter version: The version string to parse.
+    /// - Returns: A tuple of (marketingVersion, buildNumber) if parsing succeeds, nil otherwise.
+    func parsePrereleaseVersion(_ version: String) -> (marketingVersion: String, buildNumber: String)? {
+        // Handle formats like "2.0-beta6", "2.0.0-beta.6", "1.0.0-alpha.1"
+        let prereleasePattern = #"^(\d+(?:\.\d+)*)(?:\.0+)?-([a-zA-Z0-9.-]+)$"#
+        let regex = try? NSRegularExpression(pattern: prereleasePattern)
+        let range = NSRange(version.startIndex..., in: version)
+
+        guard let match = regex?.firstMatch(in: version, range: range),
+              let baseVersionRange = Range(match.range(at: 1), in: version)
+        else {
+            return nil
+        }
+
+        let baseVersion = String(version[baseVersionRange])
+
+        // Ensure the base version has at least major.minor.patch (e.g., "2.0" -> "2.0.0")
+        let normalizedBaseVersion = normalizeVersionString(baseVersion)
+
+        return (normalizedBaseVersion, version)
+    }
+
+    /// Normalizes a version string to ensure it's compatible with agvtool.
+    ///
+    /// - Parameter version: The version string to normalize.
+    /// - Returns: A version string that agvtool can accept.
+    func normalizeVersionString(_ version: String) -> String {
+        let components = version.split(separator: ".").map(String.init)
+
+        switch components.count {
+        case 1:
+            // "2" -> "2.0" (agvtool prefers at least major.minor)
+            return "\(components[0]).0"
+        case 2:
+            // "2.0" -> "2.0" (already good)
+            return version
+        default:
+            // "2.0.0" or longer -> use as-is
+            return version
+        }
     }
 
     /// Kills an existing process.
@@ -670,7 +776,7 @@ extension SwiftBuilder {
 
             switch executables.count {
             case 0:
-                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package"))
+                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package."))
             case 1:
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
