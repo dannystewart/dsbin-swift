@@ -131,7 +131,7 @@ struct Install: ParsableCommand {
     }
 }
 
-// MARK: - SwiftBuilder
+// MARK: - Build and Process Extension
 
 extension SwiftBuilder {
     /// The type of project, either an Xcode project or a Swift package.
@@ -232,8 +232,8 @@ extension SwiftBuilder {
         }
     }
 
-    /// Archives a project for release. This prepares a project to be validated and distributed. Note that
-    /// actual validation and distribution must still be done within the Xcode Organizer.
+    /// Archives a project for release. This prepares a project to be validated and distributed.
+    /// Note that actual distribution must still be done within the Organizer in Xcode.
     ///
     /// - Parameters:
     ///   - projectType: The type of project to archive.
@@ -263,7 +263,7 @@ extension SwiftBuilder {
         }
     }
 
-    /// Installs the built executable by creating a symlink in ~/.local/bin.
+    /// Installs the built executable by creating a symlink in `~/.local/bin`.
     ///
     /// - Parameters:
     ///   - projectType: The type of project to install.
@@ -352,8 +352,8 @@ extension SwiftBuilder {
         }
     }
 
-    /// Prepares DMG and zip packages for an Xcode project. NOTE: This is hardcoded to look for the .app bundle in
-    /// `~/Downloads` and to export the release to the `releases` folder alongside the project.
+    /// Prepares DMG and zip packages for an Xcode project. This is hardcoded to look for the app
+    /// in`~/Downloads` and to export the release to the `releases` folder for the project.
     ///
     /// - Parameters:
     ///   - projectName: The name of the project.
@@ -365,7 +365,7 @@ extension SwiftBuilder {
         // Define paths
         let homeDirectory = NSHomeDirectory()
         let appPath = "\(homeDirectory)/Downloads/\(projectName).app"
-        let outputPath = "\(homeDirectory)/Developer/\(projectName)/release"
+        let outputPath = "\(homeDirectory)/Developer/\(projectName)/releases"
 
         // Check if the app exists in Downloads
         let fileManager = FileManager.default
@@ -508,7 +508,7 @@ extension SwiftBuilder {
         Text.printColor("Build completed successfully!", .green)
     }
 
-    /// Archives a Xcode project for release.
+    /// Archives an Xcode project for release.
     ///
     /// - Parameters:
     ///   - projectPath: The path to the Xcode project.
@@ -752,7 +752,7 @@ extension SwiftBuilder {
         return nil
     }
 
-    /// Finds a built app in the DerivedData directory.
+    /// Finds a built app in the `DerivedData` directory.
     ///
     /// - Parameter projectName: The name of the project.
     /// - Returns: The path to the built app.
