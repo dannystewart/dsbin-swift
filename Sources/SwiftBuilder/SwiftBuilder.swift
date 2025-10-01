@@ -116,11 +116,14 @@ struct Prepare: ParsableCommand {
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
 
+    @Flag(name: .long, help: "Install the app to /Applications after creating packages.")
+    var install = false
+
     func run() throws {
         let builder = SwiftBuilder()
         let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
         let projectType = try builder.determineProjectType(at: inputPath)
-        try builder.prepareReleaseForUpload(projectType: projectType, version: version)
+        try builder.prepareReleaseForUpload(projectType: projectType, version: version, shouldInstall: install)
     }
 }
 
@@ -279,10 +282,11 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - projectType: The type of project to prepare.
     ///   - version: The version for the release packages.
-    func prepareReleaseForUpload(projectType: ProjectType, version: String) throws {
+    ///   - shouldInstall: Whether to install the app to /Applications after creating packages.
+    func prepareReleaseForUpload(projectType: ProjectType, version: String, shouldInstall: Bool = false) throws {
         switch projectType {
         case let .xcode(_, _, scheme):
-            try prepareXcodeProjectRelease(projectName: scheme, version: version)
+            try prepareXcodeProjectRelease(projectName: scheme, version: version, shouldInstall: shouldInstall)
         case .swiftPackage:
             Self.logger.logAndExit(BuildError.buildFailed("Release preparation is not supported for Swift packages. Only Xcode projects can be packaged."))
         }
@@ -388,7 +392,8 @@ extension SwiftBuilder {
     /// - Parameters:
     ///   - projectName: The name of the project.
     ///   - version: The version for the packages.
-    func prepareXcodeProjectRelease(projectName: String, version: String) throws {
+    ///   - shouldInstall: Whether to install the app to /Applications after creating packages.
+    func prepareXcodeProjectRelease(projectName: String, version: String, shouldInstall: Bool = false) throws {
         Text.printColor("Preparing release packages for \(projectName) \(version)...", .green)
 
         // Define paths
@@ -425,6 +430,11 @@ extension SwiftBuilder {
             outputPath: "\(outputPath)/\(projectName)-\(version).zip",
         )
 
+        // Install to /Applications if requested
+        if shouldInstall {
+            try installAppToApplications(appPath: appPath, appName: projectName)
+        }
+
         // Open the releases folder
         let openProcess = Process()
         openProcess.executableURL = URL(fileURLWithPath: "/usr/bin/open")
@@ -449,6 +459,33 @@ extension SwiftBuilder {
         }
 
         return hash.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Installs an app bundle to /Applications, overwriting any existing version.
+    ///
+    /// - Parameters:
+    ///   - appPath: The path to the .app bundle to install.
+    ///   - appName: The name of the app (without .app extension).
+    func installAppToApplications(appPath: String, appName: String) throws {
+        Text.printColor("Installing \(appName) to /Applications...", .green)
+
+        let fileManager = FileManager.default
+        let destinationPath = "/Applications/\(appName).app"
+
+        // Remove existing app if it exists
+        if fileManager.fileExists(atPath: destinationPath) {
+            Text.printColor("Removing existing \(appName) from /Applications...", .yellow)
+            try fileManager.removeItem(atPath: destinationPath)
+        }
+
+        // Copy the app to /Applications
+        try fileManager.copyItem(atPath: appPath, toPath: destinationPath)
+
+        // Set proper permissions
+        let attributes = [FileAttributeKey.posixPermissions: 0o755]
+        try fileManager.setAttributes(attributes, ofItemAtPath: destinationPath)
+
+        Text.printColor("✅ \(appName) installed successfully to /Applications!", .green)
     }
 
     /// Creates a DMG image from an app.
