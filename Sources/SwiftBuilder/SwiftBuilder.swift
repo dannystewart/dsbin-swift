@@ -88,17 +88,24 @@ struct Archive: ParsableCommand {
         abstract: "Archive the project for release.",
     )
 
+    @Argument(help: "Marketing version for the archive (e.g., 1.2.3).")
+    var marketingVersion: String
+
+    @Option(name: .shortAndLong, help: "Build number (defaults to marketing version if not specified).")
+    var buildNumber: String?
+
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
-
-    @Argument(help: "Version for the archive (e.g., 1.2.3).")
-    var version: String
 
     func run() throws {
         let builder = SwiftBuilder()
         let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
         let projectType = try builder.determineProjectType(at: inputPath)
-        try builder.archiveForRelease(projectType: projectType, version: version)
+
+        // Parse the marketing version to extract base version and build number
+        let (parsedMarketingVersion, parsedBuildNumber) = builder.parseVersionForArchive(marketingVersion: marketingVersion, buildNumber: buildNumber)
+
+        try builder.archiveForRelease(projectType: projectType, marketingVersion: parsedMarketingVersion, buildNumber: parsedBuildNumber)
     }
 }
 
@@ -267,11 +274,12 @@ extension SwiftBuilder {
     ///
     /// - Parameters:
     ///   - projectType: The type of project to archive.
-    ///   - version: The version to archive the project with.
-    func archiveForRelease(projectType: ProjectType, version: String) throws {
+    ///   - marketingVersion: The marketing version to archive the project with.
+    ///   - buildNumber: The build number to archive the project with.
+    func archiveForRelease(projectType: ProjectType, marketingVersion: String, buildNumber: String) throws {
         switch projectType {
         case let .xcode(kind, path, scheme):
-            try archiveXcodeProject(containerKind: kind, containerPath: path, scheme: scheme, version: version)
+            try archiveXcodeProject(containerKind: kind, containerPath: path, scheme: scheme, marketingVersion: marketingVersion, buildNumber: buildNumber)
         case .swiftPackage:
             Self.logger.logAndExit(BuildError.buildFailed("Archiving is not supported for Swift packages. Use 'swift build -c release' instead."))
         }
@@ -630,12 +638,13 @@ extension SwiftBuilder {
     ///   - containerKind: Whether this is a project or workspace.
     ///   - containerPath: The .xcodeproj or .xcworkspace path.
     ///   - scheme: The scheme to archive.
-    ///   - version: The version to archive the project with.
-    func archiveXcodeProject(containerKind: XcodeContainerKind, containerPath: String, scheme: String, version: String) throws {
-        Text.printColor("Archiving \(scheme) with version \(version)...", .green)
+    ///   - marketingVersion: The marketing version to archive the project with.
+    ///   - buildNumber: The build number to archive the project with.
+    func archiveXcodeProject(containerKind: XcodeContainerKind, containerPath: String, scheme: String, marketingVersion: String, buildNumber: String) throws {
+        Text.printColor("Archiving \(scheme) with marketing version \(marketingVersion) and build number \(buildNumber)...", .green)
 
         // First, set the version in the project
-        try setProjectVersion(projectPath: containerPath, version: version)
+        try setProjectVersion(projectPath: containerPath, marketingVersion: marketingVersion, buildNumber: buildNumber)
 
         // Now archive
         let archiveProcess = Process()
@@ -669,15 +678,55 @@ extension SwiftBuilder {
     ///
     /// - Parameters:
     ///   - projectPath: The path to the project/workspace (we use its parent dir to run agvtool).
-    ///   - version: The version to set.
-    func setProjectVersion(projectPath: String, version: String) throws {
-        Text.printColor("Setting version to: \(version)", .green)
+    ///   - marketingVersion: The marketing version to set.
+    ///   - buildNumber: The build number to set.
+    func setProjectVersion(projectPath: String, marketingVersion: String, buildNumber: String) throws {
+        Text.printColor("Setting marketing version to: \(marketingVersion) and build number to: \(buildNumber)", .green)
+
+        // Check if this is an Apple Generic Versioning project
+        if try isAppleGenericVersioningProject(projectPath: projectPath) {
+            try setVersionForAppleGenericProject(projectPath: projectPath, marketingVersion: marketingVersion, buildNumber: buildNumber)
+        } else {
+            try setVersionWithAgvtool(projectPath: projectPath, marketingVersion: marketingVersion, buildNumber: buildNumber)
+        }
+    }
+
+    /// Checks if the project uses Apple Generic Versioning.
+    func isAppleGenericVersioningProject(projectPath: String) throws -> Bool {
+        let projectFile = "\(projectPath)/project.pbxproj"
+        Text.printColor("Looking for project.pbxproj at: \(projectFile)", .cyan)
+        let content = try String(contentsOfFile: projectFile, encoding: .utf8)
+        return content.contains("VERSIONING_SYSTEM = \"apple-generic\"")
+    }
+
+    /// Sets version for Apple Generic Versioning projects by modifying project.pbxproj directly.
+    func setVersionForAppleGenericProject(projectPath: String, marketingVersion: String, buildNumber: String) throws {
+        Text.printColor("Using Apple Generic Versioning - modifying project.pbxproj directly", .cyan)
+
+        let projectFile = "\(projectPath)/project.pbxproj"
+        var content = try String(contentsOfFile: projectFile, encoding: .utf8)
+
+        // Update marketing version
+        let marketingVersionPattern = #"MARKETING_VERSION = "[^"]*";"#
+        let marketingVersionReplacement = "MARKETING_VERSION = \"\(marketingVersion)\";"
+        content = content.replacingOccurrences(of: marketingVersionPattern, with: marketingVersionReplacement, options: .regularExpression)
+
+        // Update build number (CURRENT_PROJECT_VERSION)
+        let buildNumberPattern = #"CURRENT_PROJECT_VERSION = [^;]*;"#
+        let buildNumberReplacement = "CURRENT_PROJECT_VERSION = \(buildNumber);"
+        content = content.replacingOccurrences(of: buildNumberPattern, with: buildNumberReplacement, options: .regularExpression)
+
+        // Write the updated content back
+        try content.write(toFile: projectFile, atomically: true, encoding: .utf8)
+
+        Text.printColor("Successfully updated project.pbxproj", .green)
+    }
+
+    /// Sets version using agvtool for traditional projects.
+    func setVersionWithAgvtool(projectPath: String, marketingVersion: String, buildNumber: String) throws {
+        Text.printColor("Using agvtool for traditional versioning", .cyan)
 
         let projectDir = URL(fileURLWithPath: projectPath).deletingLastPathComponent().path
-
-        // For prerelease versions, we need to handle them differently
-        // agvtool expects standard semantic versions, so we'll use a workaround
-        let (marketingVersion, buildNumber) = parseVersionForAgvtool(version)
 
         // Set marketing version
         let setVersionProcess = Process()
@@ -706,74 +755,40 @@ extension SwiftBuilder {
         }
     }
 
-    /// Parses a version string to extract components suitable for agvtool.
+    /// Parses version strings for archive operations, handling prerelease versions properly.
     ///
-    /// - Parameter version: The version string to parse.
+    /// - Parameters:
+    ///   - marketingVersion: The marketing version string (may contain prerelease identifiers).
+    ///   - buildNumber: Optional build number string.
     /// - Returns: A tuple of (marketingVersion, buildNumber) where marketingVersion is agvtool-compatible.
-    func parseVersionForAgvtool(_ version: String) -> (marketingVersion: String, buildNumber: String) {
-        // If it's already a standard semantic version (no prerelease identifiers), use as-is
-        if !version.contains("-"), !version.contains("+") {
-            return (version, version)
+    func parseVersionForArchive(marketingVersion: String, buildNumber: String?) -> (marketingVersion: String, buildNumber: String) {
+        // If build number is explicitly provided, use it as-is
+        if let buildNumber {
+            return (extractBaseVersion(from: marketingVersion), buildNumber)
         }
 
-        // Handle prerelease versions according to semantic versioning standards
-        if let prereleaseVersion = parsePrereleaseVersion(version) {
-            return prereleaseVersion
-        }
-
-        // For versions with build metadata like "1.0.0+123", extract the version part
-        let buildComponents = version.split(separator: "+", maxSplits: 1)
-        if buildComponents.count == 2 {
-            let versionPart = String(buildComponents[0])
-            return (versionPart, version)
-        }
-
-        // Fallback: use the version as-is for both
-        return (version, version)
+        // If no build number provided, use the full marketing version as build number
+        // and extract base version for marketing version
+        return (extractBaseVersion(from: marketingVersion), marketingVersion)
     }
 
-    /// Parses a prerelease version string according to semantic versioning standards.
+    /// Extracts the base version from a version string, removing prerelease identifiers.
     ///
     /// - Parameter version: The version string to parse.
-    /// - Returns: A tuple of (marketingVersion, buildNumber) if parsing succeeds, nil otherwise.
-    func parsePrereleaseVersion(_ version: String) -> (marketingVersion: String, buildNumber: String)? {
-        // Handle formats like "2.0-beta6", "2.0.0-beta.6", "1.0.0-alpha.1"
-        let prereleasePattern = #"^(\d+(?:\.\d+)*)(?:\.0+)?-([a-zA-Z0-9.-]+)$"#
-        let regex = try? NSRegularExpression(pattern: prereleasePattern)
-        let range = NSRange(version.startIndex..., in: version)
-
-        guard let match = regex?.firstMatch(in: version, range: range),
-              let baseVersionRange = Range(match.range(at: 1), in: version)
-        else {
-            return nil
+    /// - Returns: The base version without prerelease identifiers.
+    func extractBaseVersion(from version: String) -> String {
+        // Handle prerelease versions like "2.0-rc.1", "2.0.0-beta.6", etc.
+        if let dashIndex = version.firstIndex(of: "-") {
+            return String(version[..<dashIndex])
         }
 
-        let baseVersion = String(version[baseVersionRange])
-
-        // Ensure the base version has at least major.minor.patch (e.g., "2.0" -> "2.0.0")
-        let normalizedBaseVersion = normalizeVersionString(baseVersion)
-
-        return (normalizedBaseVersion, version)
-    }
-
-    /// Normalizes a version string to ensure it's compatible with agvtool.
-    ///
-    /// - Parameter version: The version string to normalize.
-    /// - Returns: A version string that agvtool can accept.
-    func normalizeVersionString(_ version: String) -> String {
-        let components = version.split(separator: ".").map(String.init)
-
-        switch components.count {
-        case 1:
-            // "2" -> "2.0" (agvtool prefers at least major.minor)
-            return "\(components[0]).0"
-        case 2:
-            // "2.0" -> "2.0" (already good)
-            return version
-        default:
-            // "2.0.0" or longer -> use as-is
-            return version
+        // Handle build metadata like "1.0.0+123"
+        if let plusIndex = version.firstIndex(of: "+") {
+            return String(version[..<plusIndex])
         }
+
+        // No prerelease or build metadata, return as-is
+        return version
     }
 
     /// Kills an existing process.
