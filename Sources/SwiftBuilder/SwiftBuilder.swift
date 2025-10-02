@@ -511,7 +511,7 @@ extension SwiftBuilder {
 
         Text.printColor("Cleaning up original app from Downloads...", .green)
         try fileManager.removeItem(atPath: appPath)
-        Text.printColor("Original app removed from Downloads", .green)
+        Text.printColor("Original app removed from Downloads.", .green)
     }
 
     /// Creates a DMG image from an app.
@@ -772,22 +772,43 @@ extension SwiftBuilder {
         return (extractBaseVersion(from: marketingVersion), marketingVersion)
     }
 
-    /// Extracts the base version from a version string, removing prerelease identifiers.
+    /// Extracts the base version from a version string, converting prerelease identifiers to marketing format.
     ///
     /// - Parameter version: The version string to parse.
-    /// - Returns: The base version without prerelease identifiers.
+    /// - Returns: The marketing version with prerelease identifiers formatted for display.
     func extractBaseVersion(from version: String) -> String {
+        // Handle build metadata like "1.0.0+123" - just remove the + part
+        if let plusIndex = version.firstIndex(of: "+") {
+            let versionPart = String(version[..<plusIndex])
+            return formatPrereleaseVersion(versionPart)
+        }
+
+        // Handle prerelease versions
+        return formatPrereleaseVersion(version)
+    }
+
+    /// Formats a prerelease version for marketing display.
+    ///
+    /// - Parameter version: The version string to format.
+    /// - Returns: The formatted marketing version.
+    func formatPrereleaseVersion(_ version: String) -> String {
         // Handle prerelease versions like "2.0-rc.1", "2.0.0-beta.6", etc.
         if let dashIndex = version.firstIndex(of: "-") {
-            return String(version[..<dashIndex])
+            let baseVersion = String(version[..<dashIndex])
+            let prereleasePart = String(version[version.index(after: dashIndex)...])
+
+            // Special handling for RC versions
+            if prereleasePart.hasPrefix("rc.") {
+                let rcNumber = String(prereleasePart.dropFirst(3)) // Remove "rc."
+                return "\(baseVersion)rc\(rcNumber)"
+            } else {
+                // Replace dots with spaces for other prerelease types
+                let formattedPrerelease = prereleasePart.replacingOccurrences(of: ".", with: " ")
+                return "\(baseVersion) \(formattedPrerelease)"
+            }
         }
 
-        // Handle build metadata like "1.0.0+123"
-        if let plusIndex = version.firstIndex(of: "+") {
-            return String(version[..<plusIndex])
-        }
-
-        // No prerelease or build metadata, return as-is
+        // No prerelease identifiers, return as-is
         return version
     }
 
