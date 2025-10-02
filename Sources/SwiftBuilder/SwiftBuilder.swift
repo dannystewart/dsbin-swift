@@ -88,10 +88,13 @@ struct Archive: ParsableCommand {
         abstract: "Archive the project for release.",
     )
 
-    @Argument(help: "Marketing version for the archive (e.g., 1.2.3).")
-    var marketingVersion: String
+    @Argument(help: "Version for the archive (e.g., 1.2.3, 2.0-rc.1). Used for smart formatting unless overridden by options.")
+    var version: String
 
-    @Option(name: .shortAndLong, help: "Build number (defaults to marketing version if not specified).")
+    @Option(name: .long, help: "Override marketing version (e.g., 2.0). If not specified, uses smart formatting from version.")
+    var marketingVersion: String?
+
+    @Option(name: .long, help: "Override build number (e.g., 123, 2.0-beta.1). If not specified, uses the full version.")
     var buildNumber: String?
 
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
@@ -102,10 +105,30 @@ struct Archive: ParsableCommand {
         let inputPath = projectPath ?? FileManager.default.currentDirectoryPath
         let projectType = try builder.determineProjectType(at: inputPath)
 
-        // Parse the marketing version to extract base version and build number
-        let (parsedMarketingVersion, parsedBuildNumber) = builder.parseVersionForArchive(marketingVersion: marketingVersion, buildNumber: buildNumber)
+        // Determine final marketing version and build number
+        let finalMarketingVersion: String
+        let finalBuildNumber: String
 
-        try builder.archiveForRelease(projectType: projectType, marketingVersion: parsedMarketingVersion, buildNumber: parsedBuildNumber)
+        if let marketingVersion, let buildNumber {
+            // Both overridden - use as-is
+            finalMarketingVersion = marketingVersion
+            finalBuildNumber = buildNumber
+        } else if let marketingVersion {
+            // Only marketing version overridden - use smart formatting for build number
+            finalMarketingVersion = marketingVersion
+            finalBuildNumber = version
+        } else if let buildNumber {
+            // Only build number overridden - use smart formatting for marketing version
+            finalMarketingVersion = builder.extractBaseVersion(from: version)
+            finalBuildNumber = buildNumber
+        } else {
+            // Neither overridden - use smart formatting for both
+            let (parsedMarketingVersion, parsedBuildNumber) = builder.parseVersionForArchive(marketingVersion: version, buildNumber: nil)
+            finalMarketingVersion = parsedMarketingVersion
+            finalBuildNumber = parsedBuildNumber
+        }
+
+        try builder.archiveForRelease(projectType: projectType, marketingVersion: finalMarketingVersion, buildNumber: finalBuildNumber)
     }
 }
 
