@@ -14,7 +14,7 @@ struct SwiftBuilder: ParsableCommand {
         defaultSubcommand: Build.self,
     )
 
-    private static let logger = PolyLog(simple: true)
+    private static let logger = PolyLog()
 }
 
 // MARK: - Build
@@ -742,12 +742,12 @@ extension SwiftBuilder {
         // Write the updated content back
         try content.write(toFile: projectFile, atomically: true, encoding: .utf8)
 
-        Text.printColor("Successfully updated project.pbxproj", .green)
+        Text.printColor("Successfully updated project.pbxproj.", .green)
     }
 
     /// Sets version using agvtool for traditional projects.
     func setVersionWithAgvtool(projectPath: String, marketingVersion: String, buildNumber: String) throws {
-        Text.printColor("Using agvtool for traditional versioning", .cyan)
+        Text.printColor("Using agvtool for traditional versioning.", .cyan)
 
         let projectDir = URL(fileURLWithPath: projectPath).deletingLastPathComponent().path
 
@@ -774,7 +774,7 @@ extension SwiftBuilder {
         setBuildProcess.waitUntilExit()
 
         guard setBuildProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Failed to set build number '\(buildNumber)' with exit code \(setBuildProcess.terminationStatus)"))
+            Self.logger.logAndExit(BuildError.buildFailed("Failed to set build number '\(buildNumber)' with exit code \(setBuildProcess.terminationStatus)."))
         }
     }
 
@@ -967,7 +967,7 @@ extension SwiftBuilder {
         dump.waitUntilExit()
 
         guard dump.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Failed to dump package manifest (exit code \(dump.terminationStatus))"))
+            Self.logger.logAndExit(BuildError.buildFailed("Failed to dump package manifest (exit code \(dump.terminationStatus)."))
         }
 
         let data = outPipe.fileHandleForReading.readDataToEndOfFile()
