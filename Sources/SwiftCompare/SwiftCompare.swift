@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import Polykit
+import PolyKit
 
 @main
 struct SwiftCompare: ParsableCommand {

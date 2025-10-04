@@ -1,7 +1,7 @@
 import ArgumentParser
 import CommonCrypto
 import Foundation
-import Polykit
+import PolyKit
 
 // MARK: - SwiftBuilder
 
@@ -15,6 +15,14 @@ struct SwiftBuilder: ParsableCommand {
     )
 
     private static let logger = PolyLog()
+
+    func logAndExit(_ error: some LoggableError) -> Never {
+        Self.logger.logAndExit(error)
+    }
+
+    func logAndThrow(_ error: some LoggableError) throws {
+        try Self.logger.logAndThrow(error)
+    }
 }
 
 // MARK: - Build
@@ -195,7 +203,7 @@ extension SwiftBuilder {
     }
 
     /// The error type given when building projects.
-    enum BuildError: LoggableError {
+    enum RuntimeError: LoggableError {
         case invalidProject(String)
         case buildFailed(String)
         case multipleExecutables(String)
@@ -205,13 +213,6 @@ extension SwiftBuilder {
             case let .invalidProject(msg): msg
             case let .buildFailed(msg): msg
             case let .multipleExecutables(msg): msg
-            }
-        }
-
-        var isWarning: Bool {
-            switch self {
-            case .multipleExecutables: true
-            default: false
             }
         }
     }
@@ -232,12 +233,12 @@ extension SwiftBuilder {
         let packageSwiftPath = "\(path)/Package.swift"
         if FileManager.default.fileExists(atPath: packageSwiftPath) {
             guard let packageName = extractPackageName(from: path) else {
-                Self.logger.logAndExit(BuildError.invalidProject("Found Package.swift but couldn't extract package name"))
+                logAndExit(RuntimeError.invalidProject("Found Package.swift but couldn't extract package name"))
             }
             return .swiftPackage(path: path, name: packageName)
         }
 
-        Self.logger.logAndExit(BuildError.invalidProject("No Xcode project/workspace or Package.swift found at \(path)"))
+        logAndExit(RuntimeError.invalidProject("No Xcode project/workspace or Package.swift found at \(path)"))
     }
 
     /// Builds a project for development.
@@ -304,7 +305,7 @@ extension SwiftBuilder {
         case let .xcode(kind, path, scheme):
             try archiveXcodeProject(containerKind: kind, containerPath: path, scheme: scheme, marketingVersion: marketingVersion, buildNumber: buildNumber)
         case .swiftPackage:
-            Self.logger.logAndExit(BuildError.buildFailed("Archiving is not supported for Swift packages. Use 'swift build -c release' instead."))
+            logAndExit(RuntimeError.buildFailed("Archiving is not supported for Swift packages. Use 'swift build -c release' instead."))
         }
     }
 
@@ -319,7 +320,7 @@ extension SwiftBuilder {
         case let .xcode(_, _, scheme):
             try prepareXcodeProjectRelease(projectName: scheme, version: version, shouldInstall: shouldInstall)
         case .swiftPackage:
-            Self.logger.logAndExit(BuildError.buildFailed("Release preparation is not supported for Swift packages. Only Xcode projects can be packaged."))
+            logAndExit(RuntimeError.buildFailed("Release preparation is not supported for Swift packages. Only Xcode projects can be packaged."))
         }
     }
 
@@ -377,7 +378,7 @@ extension SwiftBuilder {
         switch projectType {
         case let .xcode(_, _, scheme):
             guard let appPath = findBuiltApp(projectName: scheme) else {
-                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app for \(scheme)."))
+                logAndExit(RuntimeError.buildFailed("Could not find built app for \(scheme)."))
             }
             return (appPath, scheme)
 
@@ -395,11 +396,11 @@ extension SwiftBuilder {
 
             switch executables.count {
             case 0:
-                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package."))
+                logAndExit(RuntimeError.buildFailed("No executable targets found in Swift package."))
             case 1:
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
-                    Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
+                    logAndExit(RuntimeError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                 }
                 return (firstExistingSPMPath(for: target), target)
             default:
@@ -407,11 +408,11 @@ extension SwiftBuilder {
                     if executables.contains(specifiedTarget) {
                         return (firstExistingSPMPath(for: specifiedTarget), specifiedTarget)
                     } else {
-                        Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
+                        logAndExit(RuntimeError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                     }
                 } else {
                     let executableList = executables.joined(separator: ", ")
-                    Self.logger.logAndExit(BuildError.multipleExecutables(
+                    logAndExit(RuntimeError.multipleExecutables(
                         "Multiple executables found:\n \(executableList)\n\nPlease specify which to install: swbuild install --target <executable-name>"))
                 }
             }
@@ -435,7 +436,7 @@ extension SwiftBuilder {
         // Check if the app exists in Downloads
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: appPath) else {
-            Self.logger.logAndExit(BuildError.buildFailed("App not found at \(appPath). Please ensure the app is exported to ~/Downloads."))
+            logAndExit(RuntimeError.buildFailed("App not found at \(appPath). Please ensure the app is exported to ~/Downloads."))
         }
 
         // Create output directory if needed
@@ -559,7 +560,7 @@ extension SwiftBuilder {
         hdiutilProcess.waitUntilExit()
 
         guard hdiutilProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("DMG creation failed with exit code \(hdiutilProcess.terminationStatus)"))
+            logAndExit(RuntimeError.buildFailed("DMG creation failed with exit code \(hdiutilProcess.terminationStatus)"))
         }
     }
 
@@ -581,7 +582,7 @@ extension SwiftBuilder {
         dittoProcess.waitUntilExit()
 
         guard dittoProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Zip creation failed with exit code \(dittoProcess.terminationStatus)"))
+            logAndExit(RuntimeError.buildFailed("Zip creation failed with exit code \(dittoProcess.terminationStatus)"))
         }
     }
 
@@ -616,7 +617,7 @@ extension SwiftBuilder {
         buildProcess.waitUntilExit()
 
         guard buildProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Xcode build failed with exit code \(buildProcess.terminationStatus)"))
+            logAndExit(RuntimeError.buildFailed("Xcode build failed with exit code \(buildProcess.terminationStatus)"))
         }
 
         Text.printColor("Build completed successfully!", .green)
@@ -633,7 +634,7 @@ extension SwiftBuilder {
 
         let swiftpmConfig = configuration.lowercased()
         guard swiftpmConfig == "debug" || swiftpmConfig == "release" else {
-            Self.logger.logAndExit(BuildError.buildFailed("Invalid SwiftPM configuration '\(configuration)'. Use Debug or Release."))
+            logAndExit(RuntimeError.buildFailed("Invalid SwiftPM configuration '\(configuration)'. Use Debug or Release."))
         }
 
         let buildProcess = Process()
@@ -649,7 +650,7 @@ extension SwiftBuilder {
         buildProcess.waitUntilExit()
 
         guard buildProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Swift build failed with exit code \(buildProcess.terminationStatus)"))
+            logAndExit(RuntimeError.buildFailed("Swift build failed with exit code \(buildProcess.terminationStatus)"))
         }
 
         Text.printColor("Build completed successfully!", .green)
@@ -691,7 +692,7 @@ extension SwiftBuilder {
         archiveProcess.waitUntilExit()
 
         guard archiveProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)"))
+            logAndExit(RuntimeError.buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)"))
         }
 
         Text.printColor("Archive complete! Now you can use Xcode Organizer for distribution.", .green)
@@ -761,7 +762,7 @@ extension SwiftBuilder {
         setVersionProcess.waitUntilExit()
 
         guard setVersionProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Failed to set marketing version '\(marketingVersion)' with exit code \(setVersionProcess.terminationStatus)"))
+            logAndExit(RuntimeError.buildFailed("Failed to set marketing version '\(marketingVersion)' with exit code \(setVersionProcess.terminationStatus)"))
         }
 
         // Set build number
@@ -774,7 +775,7 @@ extension SwiftBuilder {
         setBuildProcess.waitUntilExit()
 
         guard setBuildProcess.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Failed to set build number '\(buildNumber)' with exit code \(setBuildProcess.terminationStatus)."))
+            logAndExit(RuntimeError.buildFailed("Failed to set build number '\(buildNumber)' with exit code \(setBuildProcess.terminationStatus)."))
         }
     }
 
@@ -870,7 +871,7 @@ extension SwiftBuilder {
         case .xcode:
             // Xcode projects typically have one main executable
             guard let appPath = findBuiltApp(projectName: projectName, configuration: configuration) else {
-                Self.logger.logAndExit(BuildError.buildFailed("Could not find built app/executable for \(projectName)"))
+                logAndExit(RuntimeError.buildFailed("Could not find built app/executable for \(projectName)"))
             }
 
             Text.printColor("Running: \(appPath)", .green)
@@ -891,11 +892,11 @@ extension SwiftBuilder {
 
             switch executables.count {
             case 0:
-                Self.logger.logAndExit(BuildError.buildFailed("No executable targets found in Swift package."))
+                logAndExit(RuntimeError.buildFailed("No executable targets found in Swift package."))
             case 1:
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
-                    Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
+                    logAndExit(RuntimeError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                 }
                 Text.printColor("Running Swift package executable: \(target)", .green)
                 try runSwiftPackageTarget(at: path, target: target, configuration: configuration, runArguments: runArguments)
@@ -905,11 +906,11 @@ extension SwiftBuilder {
                         Text.printColor("Running Swift package executable: \(specifiedTarget)", .green)
                         try runSwiftPackageTarget(at: path, target: specifiedTarget, configuration: configuration, runArguments: runArguments)
                     } else {
-                        Self.logger.logAndExit(BuildError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
+                        logAndExit(RuntimeError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                     }
                 } else {
                     let executableList = executables.joined(separator: ", ")
-                    Self.logger.logAndExit(BuildError.multipleExecutables(
+                    logAndExit(RuntimeError.multipleExecutables(
                         "Multiple executables found:\n \(executableList)\n\nPlease specify which to run: swbuild run --target <executable-name>"))
                 }
             }
@@ -968,7 +969,7 @@ extension SwiftBuilder {
         dump.waitUntilExit()
 
         guard dump.terminationStatus == 0 else {
-            Self.logger.logAndExit(BuildError.buildFailed("Failed to dump package manifest (exit code \(dump.terminationStatus)."))
+            logAndExit(RuntimeError.buildFailed("Failed to dump package manifest (exit code \(dump.terminationStatus)."))
         }
 
         let data = outPipe.fileHandleForReading.readDataToEndOfFile()
@@ -1008,7 +1009,7 @@ extension SwiftBuilder {
         do {
             manifest = try decoder.decode(DumpPackage.self, from: data)
         } catch {
-            Self.logger.logAndExit(BuildError.buildFailed("Could not parse dump-package JSON: \(error)"))
+            logAndExit(RuntimeError.buildFailed("Could not parse dump-package JSON: \(error)"))
         }
 
         // Prefer executable products
@@ -1041,7 +1042,7 @@ extension SwiftBuilder {
     func runSwiftPackageTarget(at path: String, target: String, configuration: String, runArguments: [String]) throws {
         let swiftpmConfig = configuration.lowercased()
         guard swiftpmConfig == "debug" || swiftpmConfig == "release" else {
-            Self.logger.logAndExit(BuildError.buildFailed("Invalid SwiftPM configuration '\(configuration)'. Use Debug or Release."))
+            logAndExit(RuntimeError.buildFailed("Invalid SwiftPM configuration '\(configuration)'. Use Debug or Release."))
         }
 
         let runProcess = Process()

@@ -18,7 +18,7 @@ let package = Package(
             name: "SwiftBuilder",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "Polykit", package: "polykit-swift"),
+                .product(name: "PolyKit", package: "polykit-swift"),
             ],
             path: "Sources/SwiftBuilder",
         ),
@@ -26,7 +26,7 @@ let package = Package(
             name: "SwiftCompare",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "Polykit", package: "polykit-swift"),
+                .product(name: "PolyKit", package: "polykit-swift"),
             ],
             path: "Sources/SwiftCompare",
         ),
@@ -34,7 +34,7 @@ let package = Package(
             name: "SwiftConfigs",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "Polykit", package: "polykit-swift"),
+                .product(name: "PolyKit", package: "polykit-swift"),
             ],
             path: "Sources/SwiftConfigs",
             exclude: ["Templates"],

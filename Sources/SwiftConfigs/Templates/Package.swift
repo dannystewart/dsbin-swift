@@ -6,29 +6,30 @@ let package = Package(
     platforms: [
         .macOS(.v26),
     ],
+    // You'll probably want to keep ONLY the library OR the executable depending on what you're building
+    // This is designed to have everything you COULD need, not everything you WILL need, so thin down as needed
     products: [
-        .library(name: "YourLibrary", targets: ["YourLibrary"]),
-        .executable(name: "executable", targets: ["YourExecutable"]),
+        .library(name: "MyLibrary", targets: ["MyLibrary"]),
+        .executable(name: "executable-command", targets: ["MyExecutable"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.6.1"),
-        .package(url: "https://github.com/dannystewart/polykit-swift.git", branch: "main"),
+        .package(url: "../polykit-swift", branch: "main"),
     ],
+    // Make sure the paths match up with the project structure
     targets: [
         .target(
-            name: "YourLibrary",
+            name: "MyLibrary",
             dependencies: [
-                .product(name: "PolyLog", package: "polykit-swift"),
+                .product(name: "PolyKit", package: "polykit-swift"),
             ],
-            path: "Sources/YourLibrary"
+            path: "Sources/MyLibrary",
         ),
         .executableTarget(
-            name: "YourExecutable",
+            name: "MyExecutable",
             dependencies: [
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "PolyLog", package: "polykit-swift"),
+                .product(name: "PolyKit", package: "polykit-swift"),
             ],
-            path: "Sources/YourExecutable"
+            path: "Sources/MyExecutable",
         ),
-    ]
+    ],
 )
