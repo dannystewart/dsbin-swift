@@ -19,3 +19,6 @@ Packages/
 *.tmp
 release/
 scripts/
+
+# Package-specific files
+**/Templates/Package.resolved

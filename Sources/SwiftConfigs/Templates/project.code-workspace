@@ -11,6 +11,7 @@
         "explorerExclude.backup": {},
         "files.exclude": {
             "**/*.xcodeproj": true,
+            "**/.build": true,
             "**/.DS_Store": true,
             "**/.git": true,
             "**/.hg": false,
@@ -22,7 +23,6 @@
             "**/node_modules": true,
             "**/Thumbs.db": true,
             "*.code-workspace": true,
-            ".build": true,
             ".cursor": true,
             ".cursorindexingignore": true,
             ".history": true,
@@ -32,12 +32,6 @@
             "venv": true
         },
         "swift.autoGenerateLaunchConfigurations": false,
-        "swift.buildArguments": [
-            "-Xswiftc",
-            "-target",
-            "-Xswiftc",
-            "x86_64-apple-macosx26.0"
-        ],
         "swift.buildPath": "./.build",
         "swift.sourcekit-lsp.serverPath": "/usr/bin/sourcekit-lsp",
         "swift.swiftEnvironmentVariables": {},
