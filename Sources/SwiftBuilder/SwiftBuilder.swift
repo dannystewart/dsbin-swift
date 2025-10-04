@@ -883,6 +883,7 @@ extension SwiftBuilder {
             runProcess.standardInput = FileHandle.standardInput
 
             try runProcess.run()
+            runProcess.waitUntilExit()
 
         case let .swiftPackage(path, _):
             // Swift packages can have multiple executables, so identify or ask
