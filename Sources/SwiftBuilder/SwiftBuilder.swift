@@ -594,7 +594,8 @@ extension SwiftBuilder {
     ///   - scheme: The scheme to build.
     ///   - configuration: Debug or Release.
     func buildXcodeProject(containerKind: XcodeContainerKind, containerPath: String, scheme: String, configuration: String) throws {
-        Text.printColor("Building Xcode \(containerKind == .workspace ? "workspace" : "project"): \(scheme) [\(configuration)]", .green)
+        let configText = configuration == "Debug" ? "" : " [Release]"
+        Text.printColor("Building Xcode \(containerKind == .workspace ? "workspace" : "project"): \(scheme)\(configText)", .green)
 
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
@@ -630,7 +631,8 @@ extension SwiftBuilder {
     ///   - packageName: The name of the Swift package.
     ///   - configuration: Debug or Release.
     func buildSwiftPackage(packagePath: String, packageName: String, configuration: String) throws {
-        Text.printColor("Building Swift package: \(packageName) [\(configuration)]", .green)
+        let configText = configuration == "Debug" ? "" : " [Release]"
+        Text.printColor("Building Swift package: \(packageName)\(configText)", .green)
 
         let swiftpmConfig = configuration.lowercased()
         guard swiftpmConfig == "debug" || swiftpmConfig == "release" else {
