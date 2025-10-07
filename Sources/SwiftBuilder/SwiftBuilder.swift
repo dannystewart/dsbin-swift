@@ -7,14 +7,14 @@ import PolyKit
 
 @main
 struct SwiftBuilder: ParsableCommand {
-    static let configuration = CommandConfiguration(
+    static let configuration: CommandConfiguration = .init(
         commandName: "swbuild",
         abstract: "Build Xcode projects or Swift packages with optional running or archiving.",
         subcommands: [Build.self, Run.self, Archive.self, Prepare.self, Install.self],
         defaultSubcommand: Build.self,
     )
 
-    private static let logger = PolyLog()
+    private static let logger: PolyLog = .init()
 
     func logAndExit(_ error: some LoggableError) -> Never {
         Self.logger.logAndExit(error)
@@ -28,7 +28,7 @@ struct SwiftBuilder: ParsableCommand {
 // MARK: - Build
 
 struct Build: ParsableCommand {
-    static let configuration = CommandConfiguration(
+    static let configuration: CommandConfiguration = .init(
         commandName: "build",
         abstract: "Build the project.",
     )
@@ -36,7 +36,7 @@ struct Build: ParsableCommand {
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
 
-    // Long-only to avoid collisions with app args.
+    /// Long-only to avoid collisions with app args.
     @Option(name: .long, help: "Build configuration (Debug or Release).")
     var configuration: String = "Debug"
 
@@ -51,7 +51,7 @@ struct Build: ParsableCommand {
 // MARK: - Run
 
 struct Run: ParsableCommand {
-    static let configuration = CommandConfiguration(
+    static let configuration: CommandConfiguration = .init(
         commandName: "run",
         abstract: "Build and run the project.",
     )
@@ -62,14 +62,14 @@ struct Run: ParsableCommand {
     @Option(name: .shortAndLong, help: "Target name for Swift packages with multiple executables.")
     var target: String?
 
-    // Long-only to avoid collisions with app args
+    /// Long-only to avoid collisions with app args
     @Option(name: .long, help: "Build configuration (Debug or Release).")
     var configuration: String = "Debug"
 
     @Flag(name: .long, help: "Kill existing process, build, then run.")
     var restart = false
 
-    // Pass-through arguments to the built executable (after --)
+    /// Pass-through arguments to the built executable (after --)
     @Argument(parsing: .captureForPassthrough, help: "Arguments to pass to the executable.")
     var arguments: [String] = []
 
@@ -91,7 +91,7 @@ struct Run: ParsableCommand {
 // MARK: - Archive
 
 struct Archive: ParsableCommand {
-    static let configuration = CommandConfiguration(
+    static let configuration: CommandConfiguration = .init(
         commandName: "archive",
         abstract: "Archive the project for release.",
     )
@@ -143,7 +143,7 @@ struct Archive: ParsableCommand {
 // MARK: - Prepare
 
 struct Prepare: ParsableCommand {
-    static let configuration = CommandConfiguration(
+    static let configuration: CommandConfiguration = .init(
         commandName: "prepare",
         abstract: "Prepare release packages (DMG and zip) from an archived app.",
     )
@@ -168,7 +168,7 @@ struct Prepare: ParsableCommand {
 // MARK: - Install
 
 struct Install: ParsableCommand {
-    static let configuration = CommandConfiguration(
+    static let configuration: CommandConfiguration = .init(
         commandName: "install",
         abstract: "Install the built executable by creating a symlink in ~/.local/bin.",
     )
@@ -397,12 +397,14 @@ extension SwiftBuilder {
             switch executables.count {
             case 0:
                 logAndExit(RuntimeError.buildFailed("No executable targets found in Swift package."))
+
             case 1:
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
                     logAndExit(RuntimeError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                 }
                 return (firstExistingSPMPath(for: target), target)
+
             default:
                 if let specifiedTarget = targetName {
                     if executables.contains(specifiedTarget) {
@@ -549,10 +551,13 @@ extension SwiftBuilder {
         hdiutilProcess.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
         hdiutilProcess.arguments = [
             "create",
-            "-volname", volumeName,
-            "-srcfolder", appPath,
+            "-volname",
+            volumeName,
+            "-srcfolder",
+            appPath,
             "-ov",
-            "-format", "UDZO",
+            "-format",
+            "UDZO",
             outputPath,
         ]
 
@@ -573,7 +578,9 @@ extension SwiftBuilder {
         let dittoProcess = Process()
         dittoProcess.executableURL = URL(fileURLWithPath: "/usr/bin/ditto")
         dittoProcess.arguments = [
-            "-c", "-k", "--sequesterRsrc",
+            "-c",
+            "-k",
+            "--sequesterRsrc",
             appPath,
             outputPath,
         ]
@@ -895,6 +902,7 @@ extension SwiftBuilder {
             switch executables.count {
             case 0:
                 logAndExit(RuntimeError.buildFailed("No executable targets found in Swift package."))
+
             case 1:
                 let target = targetName ?? executables[0]
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
@@ -902,6 +910,7 @@ extension SwiftBuilder {
                 }
                 Text.printColor("Running Swift package executable: \(target)", .green)
                 try runSwiftPackageTarget(at: path, target: target, configuration: configuration, runArguments: runArguments)
+
             default:
                 if let specifiedTarget = targetName {
                     if executables.contains(specifiedTarget) {
@@ -1015,7 +1024,7 @@ extension SwiftBuilder {
         }
 
         // Prefer executable products
-        var names: [String] = []
+        var names = [String]()
         if let products = manifest.products {
             for product in products where product.type.isExecutable {
                 names.append(product.name)

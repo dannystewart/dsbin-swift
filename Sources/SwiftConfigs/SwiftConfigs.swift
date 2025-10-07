@@ -4,7 +4,7 @@ import PolyKit
 
 @main
 struct SwiftConfigs: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
+    static let configuration: CommandConfiguration = .init(
         commandName: "swconfigs",
         abstract: "Download and manage Swift project configuration files",
     )
@@ -51,7 +51,7 @@ struct SwiftConfigs: AsyncParsableCommand {
             ConfigFile(name: "project.code-workspace", isTemplate: true),
         ]
 
-        // Helper struct to track config file status
+        /// Helper struct to track config file status
         struct ConfigStatus {
             let fileExists: Bool
         }
@@ -59,7 +59,7 @@ struct SwiftConfigs: AsyncParsableCommand {
         func updateConfigs() async throws {
             // Check which configs need updates
             let configStatuses = await withTaskGroup(of: (ConfigFile, ConfigStatus).self) { group in
-                var results: [(ConfigFile, ConfigStatus)] = []
+                var results = [(ConfigFile, ConfigStatus)]()
 
                 for config in configs {
                     group.addTask {
@@ -81,7 +81,7 @@ struct SwiftConfigs: AsyncParsableCommand {
             }
         }
 
-        // Helper method to process individual configs
+        /// Helper method to process individual configs
         private func processConfig(_ config: ConfigFile, status: ConfigStatus) async throws {
             if status.fileExists {
                 if config.isTemplate {
