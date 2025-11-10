@@ -4,21 +4,17 @@ import PolyKit
 
 @main
 struct SwiftConfigs: AsyncParsableCommand {
-    static let configuration: CommandConfiguration = .init(
-        commandName: "swconfigs",
-        abstract: "Download and manage Swift project configuration files",
-    )
+    // MARK: Nested Types
 
     struct ConfigFile {
+        // MARK: Properties
+
         let name: String
         let isTemplate: Bool
 
         private let baseURL = "https://raw.githubusercontent.com/dannystewart/dsbin-swift/refs/heads/main/"
 
-        init(name: String, isTemplate: Bool = false) {
-            self.name = name
-            self.isTemplate = isTemplate
-        }
+        // MARK: Computed Properties
 
         var sourceURL: URL {
             if isTemplate {
@@ -40,9 +36,25 @@ struct SwiftConfigs: AsyncParsableCommand {
 
             return URL(fileURLWithPath: "./\(finalName)")
         }
+
+        // MARK: Lifecycle
+
+        init(name: String, isTemplate: Bool = false) {
+            self.name = name
+            self.isTemplate = isTemplate
+        }
     }
 
     class ConfigManager {
+        // MARK: Nested Types
+
+        /// Helper struct to track config file status
+        struct ConfigStatus {
+            let fileExists: Bool
+        }
+
+        // MARK: Properties
+
         let configs: [ConfigFile] = [
             ConfigFile(name: ".gitignore"),
             ConfigFile(name: ".swiftformat"),
@@ -51,10 +63,7 @@ struct SwiftConfigs: AsyncParsableCommand {
             ConfigFile(name: "project.code-workspace", isTemplate: true),
         ]
 
-        /// Helper struct to track config file status
-        struct ConfigStatus {
-            let fileExists: Bool
-        }
+        // MARK: Functions
 
         func updateConfigs() async throws {
             // Check which configs need updates
@@ -130,6 +139,15 @@ struct SwiftConfigs: AsyncParsableCommand {
             PolyText.printColor("✓ Downloaded \(config.destinationURL.lastPathComponent)", .green)
         }
     }
+
+    // MARK: Static Properties
+
+    static let configuration: CommandConfiguration = .init(
+        commandName: "swconfigs",
+        abstract: "Download and manage Swift project configuration files",
+    )
+
+    // MARK: Functions
 
     func run() async throws {
         let manager = ConfigManager()

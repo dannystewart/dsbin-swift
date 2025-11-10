@@ -7,6 +7,8 @@ import PolyKit
 
 @main
 struct SwiftBuilder: ParsableCommand {
+    // MARK: Static Properties
+
     static let configuration: CommandConfiguration = .init(
         commandName: "swbuild",
         abstract: "Build Xcode projects or Swift packages with optional running or archiving.",
@@ -15,6 +17,8 @@ struct SwiftBuilder: ParsableCommand {
     )
 
     private static let logger: PolyLog = .init()
+
+    // MARK: Functions
 
     func logAndExit(_ error: some LoggableError) -> Never {
         Self.logger.logAndExit(error)
@@ -28,10 +32,14 @@ struct SwiftBuilder: ParsableCommand {
 // MARK: - Build
 
 struct Build: ParsableCommand {
+    // MARK: Static Properties
+
     static let configuration: CommandConfiguration = .init(
         commandName: "build",
         abstract: "Build the project.",
     )
+
+    // MARK: Properties
 
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
@@ -39,6 +47,8 @@ struct Build: ParsableCommand {
     /// Long-only to avoid collisions with app args.
     @Option(name: .long, help: "Build configuration (Debug or Release).")
     var configuration: String = "Debug"
+
+    // MARK: Functions
 
     func run() throws {
         let builder = SwiftBuilder()
@@ -51,10 +61,14 @@ struct Build: ParsableCommand {
 // MARK: - Run
 
 struct Run: ParsableCommand {
+    // MARK: Static Properties
+
     static let configuration: CommandConfiguration = .init(
         commandName: "run",
         abstract: "Build and run the project.",
     )
+
+    // MARK: Properties
 
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
@@ -72,6 +86,8 @@ struct Run: ParsableCommand {
     /// Pass-through arguments to the built executable (after --)
     @Argument(parsing: .captureForPassthrough, help: "Arguments to pass to the executable.")
     var arguments: [String] = []
+
+    // MARK: Functions
 
     func run() throws {
         let builder = SwiftBuilder()
@@ -91,10 +107,14 @@ struct Run: ParsableCommand {
 // MARK: - Archive
 
 struct Archive: ParsableCommand {
+    // MARK: Static Properties
+
     static let configuration: CommandConfiguration = .init(
         commandName: "archive",
         abstract: "Archive the project for release.",
     )
+
+    // MARK: Properties
 
     @Argument(help: "Version for the archive (e.g., 1.2.3, 2.0-rc.1). Used for smart formatting unless overridden by options.")
     var version: String
@@ -107,6 +127,8 @@ struct Archive: ParsableCommand {
 
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
+
+    // MARK: Functions
 
     func run() throws {
         let builder = SwiftBuilder()
@@ -143,10 +165,14 @@ struct Archive: ParsableCommand {
 // MARK: - Prepare
 
 struct Prepare: ParsableCommand {
+    // MARK: Static Properties
+
     static let configuration: CommandConfiguration = .init(
         commandName: "prepare",
         abstract: "Prepare release packages (DMG and zip) from an archived app.",
     )
+
+    // MARK: Properties
 
     @Argument(help: "Version for the release packages (e.g., 1.2.3).")
     var version: String
@@ -156,6 +182,8 @@ struct Prepare: ParsableCommand {
 
     @Flag(name: .long, help: "Install the app to /Applications after creating packages.")
     var install = false
+
+    // MARK: Functions
 
     func run() throws {
         let builder = SwiftBuilder()
@@ -168,16 +196,22 @@ struct Prepare: ParsableCommand {
 // MARK: - Install
 
 struct Install: ParsableCommand {
+    // MARK: Static Properties
+
     static let configuration: CommandConfiguration = .init(
         commandName: "install",
         abstract: "Install the built executable by creating a symlink in ~/.local/bin.",
     )
+
+    // MARK: Properties
 
     @Argument(help: "Path to directory with Xcode project or Package.swift.")
     var projectPath: String?
 
     @Option(name: .shortAndLong, help: "Target name for Swift packages with multiple executables.")
     var target: String?
+
+    // MARK: Functions
 
     func run() throws {
         let builder = SwiftBuilder()
@@ -207,6 +241,8 @@ extension SwiftBuilder {
         case invalidProject(String)
         case buildFailed(String)
         case multipleExecutables(String)
+
+        // MARK: Computed Properties
 
         var logMessage: String {
             switch self {

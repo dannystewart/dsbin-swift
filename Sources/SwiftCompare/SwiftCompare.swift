@@ -4,16 +4,36 @@ import PolyKit
 
 @main
 struct SwiftCompare: ParsableCommand {
+    // MARK: Nested Types
+
+    /// Struct containing the common and unique elements of two lists.
+    ///
+    /// - Parameters:
+    ///   - common: The common elements of the two lists.
+    ///   - unique1: The unique elements of the first list.
+    ///   - unique2: The unique elements of the second list.
+    struct ComparisonResult {
+        let common: [String]
+        let unique1: [String]
+        let unique2: [String]
+    }
+
+    // MARK: Static Properties
+
     static let configuration: CommandConfiguration = .init(
         commandName: "swcompare",
         abstract: "Compare two lists and output common and unique elements.",
     )
+
+    // MARK: Properties
 
     @Flag(name: .long, help: "Compare case-sensitively ('Apple' and 'apple' are different).")
     var caseSensitive = false
 
     @Flag(name: .long, help: "Skip asking for list titles.")
     var noTitles = false
+
+    // MARK: Functions
 
     func run() throws {
         // Get list titles
@@ -51,18 +71,6 @@ struct SwiftCompare: ParsableCommand {
             unique1: Array(unique1),
             unique2: Array(unique2),
         )
-    }
-
-    /// Struct containing the common and unique elements of two lists.
-    ///
-    /// - Parameters:
-    ///   - common: The common elements of the two lists.
-    ///   - unique1: The unique elements of the first list.
-    ///   - unique2: The unique elements of the second list.
-    struct ComparisonResult {
-        let common: [String]
-        let unique1: [String]
-        let unique2: [String]
     }
 
     /// Gets the title of the list from the user.
