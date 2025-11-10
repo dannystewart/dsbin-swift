@@ -70,7 +70,7 @@ struct SwiftCompare: ParsableCommand {
     /// - Parameter defaultTitle: The default title to use if the user presses Enter.
     /// - Returns: The title of the list.
     func getTitle(_ defaultTitle: String) -> String {
-        Text.printColor(
+        PolyText.printColor(
             "Enter a title for the \(defaultTitle) list (or press Enter to skip): ",
             .yellow,
             terminator: "",
@@ -86,7 +86,7 @@ struct SwiftCompare: ParsableCommand {
     /// - Parameter title: The title of the list.
     /// - Returns: The list.
     func getList(title: String) -> [String] {
-        Text.printColor("\nPaste the \(title) list (type '.' and press Enter to finish):", .green)
+        PolyText.printColor("\nPaste the \(title) list (type '.' and press Enter to finish):", .green)
         var items = [String]()
 
         while let line = readLine() {
@@ -106,21 +106,21 @@ struct SwiftCompare: ParsableCommand {
     ///   - title1: The title of the first list.
     ///   - title2: The title of the second list.
     func displayResults(_ result: ComparisonResult, title1: String, title2: String) {
-        Text.printColor("\n=== Results ===", .blue)
+        PolyText.printColor("\n=== Results ===", .blue)
 
-        Text.printColor("\nCommon elements (\(result.common.count)):", .yellow)
+        PolyText.printColor("\nCommon elements (\(result.common.count)):", .yellow)
         for item in result.common.sorted() {
-            Text.printColor("  • \(item)", .green)
+            PolyText.printColor("  • \(item)", .green)
         }
 
-        Text.printColor("\nUnique in \(title1) list (\(result.unique1.count)):", .yellow)
+        PolyText.printColor("\nUnique in \(title1) list (\(result.unique1.count)):", .yellow)
         for item in result.unique1.sorted() {
-            Text.printColor("  • \(item)", .green)
+            PolyText.printColor("  • \(item)", .green)
         }
 
-        Text.printColor("\nUnique in \(title2) list (\(result.unique2.count)):", .yellow)
+        PolyText.printColor("\nUnique in \(title2) list (\(result.unique2.count)):", .yellow)
         for item in result.unique2.sorted() {
-            Text.printColor("  • \(item)", .green)
+            PolyText.printColor("  • \(item)", .green)
         }
     }
 }
