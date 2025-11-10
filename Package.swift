@@ -8,6 +8,7 @@ let package = Package(
         .executable(name: "swbuild", targets: ["SwiftBuilder"]),
         .executable(name: "swcompare", targets: ["SwiftCompare"]),
         .executable(name: "swconfigs", targets: ["SwiftConfigs"]),
+        .executable(name: "swdeploy", targets: ["SwiftDeploy"]),
     ],
     dependencies: [
         .package(path: "../polykit-swift"),
@@ -38,6 +39,14 @@ let package = Package(
             ],
             path: "Sources/SwiftConfigs",
             exclude: ["Templates"],
+        ),
+        .executableTarget(
+            name: "SwiftDeploy",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "PolyKit", package: "polykit-swift"),
+            ],
+            path: "Sources/SwiftDeploy",
         ),
     ],
 )
