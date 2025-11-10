@@ -991,15 +991,21 @@ extension SwiftBuilder {
         struct DumpPackage: Decodable {
             struct Product: Decodable {
                 struct ProductType: Decodable {
-                    // In dump-package JSON, type is an object with a single key indicating the type
-                    // We model common possibilities as optional arrays (values may be null or arrays)
-                    let executable: [String]?
-                    let library: [String]?
-                    let test: [String]?
-                    let plugin: [String]?
-                    let macro: [String]?
+                    /// In dump-package JSON, type is an object with a single key indicating the type
+                    /// The key's presence (even with null value) indicates the type
+                    private enum CodingKeys: String, CodingKey {
+                        case executable, library, test, plugin, macro
+                    }
 
-                    var isExecutable: Bool { executable != nil }
+                    let isExecutable: Bool
+                    let isLibrary: Bool
+
+                    init(from decoder: Decoder) throws {
+                        let container = try decoder.container(keyedBy: CodingKeys.self)
+                        // Check if keys exist, regardless of their value
+                        isExecutable = container.contains(.executable)
+                        isLibrary = container.contains(.library)
+                    }
                 }
 
                 let name: String
