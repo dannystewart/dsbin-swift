@@ -57,9 +57,9 @@
 --mark-class-threshold 0
 --mark-enum-threshold 0
 --mark-extension-threshold 0
---mark-extensions always
+--mark-extensions if-not-empty
 --mark-struct-threshold 0
---mark-types always
+--mark-types if-not-empty
 --markdown-files ignore
 --max-width none
 --modifier-order

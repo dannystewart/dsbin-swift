@@ -382,7 +382,7 @@ extension SwiftBuilder {
 
         if !fileManager.fileExists(atPath: localBinPath) {
             try fileManager.createDirectory(atPath: localBinPath, withIntermediateDirectories: true)
-            PolyText.printColor("Created directory: \(localBinPath)", .green)
+            PolyTerm.printColor("Created directory: \(localBinPath)", .green)
         }
 
         // Create the symlink
@@ -395,13 +395,13 @@ extension SwiftBuilder {
 
         // Create the symlink
         try fileManager.createSymbolicLink(atPath: symlinkPath, withDestinationPath: executablePath)
-        PolyText.printColor("Created symlink: \(symlinkPath) -> \(executablePath)", .green)
+        PolyTerm.printColor("Created symlink: \(symlinkPath) -> \(executablePath)", .green)
 
         // Make the symlink executable
         let attributes = [FileAttributeKey.posixPermissions: 0o755]
         try fileManager.setAttributes(attributes, ofItemAtPath: symlinkPath)
 
-        PolyText.printColor("\nInstallation complete! You can now run '\(executableName)' from anywhere.", .green)
+        PolyTerm.printColor("\nInstallation complete! You can now run '\(executableName)' from anywhere.", .green)
     }
 
     /// Gets the executable path and name for a project.
@@ -464,7 +464,7 @@ extension SwiftBuilder {
     ///   - version: The version for the packages.
     ///   - shouldInstall: Whether to install the app to /Applications after creating packages.
     func prepareXcodeProjectRelease(projectName: String, version: String, shouldInstall: Bool = false) throws {
-        PolyText.printColor("Preparing release packages for \(projectName) \(version)...", .green)
+        PolyTerm.printColor("Preparing release packages for \(projectName) \(version)...", .green)
 
         // Define paths
         let homeDirectory = NSHomeDirectory()
@@ -481,7 +481,7 @@ extension SwiftBuilder {
         try fileManager.createDirectory(atPath: outputPath, withIntermediateDirectories: true)
 
         // Create DMG
-        PolyText.printColor("Creating DMG file...", .green)
+        PolyTerm.printColor("Creating DMG file...", .green)
         let dmgPath = "\(outputPath)/\(projectName)-\(version).dmg"
         try createDMG(
             appPath: appPath,
@@ -490,11 +490,11 @@ extension SwiftBuilder {
         )
 
         // Calculate and display SHA256 hash for Homebrew
-        PolyText.printColor("Calculating SHA256 hash...", .green)
+        PolyTerm.printColor("Calculating SHA256 hash...", .green)
         let sha256Hash = try calculateSHA256Hash(for: dmgPath)
 
         // Create zip
-        PolyText.printColor("Creating zip file...", .green)
+        PolyTerm.printColor("Creating zip file...", .green)
         try createZip(
             appPath: appPath,
             outputPath: "\(outputPath)/\(projectName)-\(version).zip",
@@ -513,8 +513,8 @@ extension SwiftBuilder {
         openProcess.arguments = [outputPath]
         try openProcess.run()
 
-        PolyText.printColor("Release packages created successfully: \(outputPath)", .green)
-        PolyText.printColor("SHA256: \(sha256Hash)", .cyan)
+        PolyTerm.printColor("Release packages created successfully: \(outputPath)", .green)
+        PolyTerm.printColor("SHA256: \(sha256Hash)", .cyan)
     }
 
     /// Calculates the SHA256 hash of a file.
@@ -539,14 +539,14 @@ extension SwiftBuilder {
     ///   - appPath: The path to the .app bundle to install.
     ///   - appName: The name of the app (without .app extension).
     func installAppToApplications(appPath: String, appName: String) throws {
-        PolyText.printColor("Installing \(appName) to /Applications...", .green)
+        PolyTerm.printColor("Installing \(appName) to /Applications...", .green)
 
         let fileManager = FileManager.default
         let destinationPath = "/Applications/\(appName).app"
 
         // Remove existing app if it exists
         if fileManager.fileExists(atPath: destinationPath) {
-            PolyText.printColor("Removing existing \(appName) from /Applications...", .yellow)
+            PolyTerm.printColor("Removing existing \(appName) from /Applications...", .yellow)
             try fileManager.removeItem(atPath: destinationPath)
         }
 
@@ -557,7 +557,7 @@ extension SwiftBuilder {
         let attributes = [FileAttributeKey.posixPermissions: 0o755]
         try fileManager.setAttributes(attributes, ofItemAtPath: destinationPath)
 
-        PolyText.printColor("\(appName) installed successfully to /Applications!", .green)
+        PolyTerm.printColor("\(appName) installed successfully to /Applications!", .green)
     }
 
     /// Cleans up the original app from Downloads after installation.
@@ -571,9 +571,9 @@ extension SwiftBuilder {
             return // Nothing to clean up
         }
 
-        PolyText.printColor("Cleaning up original app from Downloads...", .green)
+        PolyTerm.printColor("Cleaning up original app from Downloads...", .green)
         try fileManager.removeItem(atPath: appPath)
-        PolyText.printColor("Original app removed from Downloads.", .green)
+        PolyTerm.printColor("Original app removed from Downloads.", .green)
     }
 
     /// Creates a DMG image from an app.
@@ -638,7 +638,7 @@ extension SwiftBuilder {
     ///   - configuration: Debug or Release.
     func buildXcodeProject(containerKind: XcodeContainerKind, containerPath: String, scheme: String, configuration: String) throws {
         let configText = configuration == "Debug" ? "" : " [Release]"
-        PolyText.printColor("Building Xcode \(containerKind == .workspace ? "workspace" : "project"): \(scheme)\(configText)", .green)
+        PolyTerm.printColor("Building Xcode \(containerKind == .workspace ? "workspace" : "project"): \(scheme)\(configText)", .green)
 
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
@@ -664,7 +664,7 @@ extension SwiftBuilder {
             logAndExit(RuntimeError.buildFailed("Xcode build failed with exit code \(buildProcess.terminationStatus)"))
         }
 
-        PolyText.printColor("Build completed successfully!", .green)
+        PolyTerm.printColor("Build completed successfully!", .green)
     }
 
     /// Builds a Swift package.
@@ -675,7 +675,7 @@ extension SwiftBuilder {
     ///   - configuration: Debug or Release.
     func buildSwiftPackage(packagePath: String, packageName: String, configuration: String) throws {
         let configText = configuration == "Debug" ? "" : " [Release]"
-        PolyText.printColor("Building Swift package: \(packageName)\(configText)", .green)
+        PolyTerm.printColor("Building Swift package: \(packageName)\(configText)", .green)
 
         let swiftpmConfig = configuration.lowercased()
         guard swiftpmConfig == "debug" || swiftpmConfig == "release" else {
@@ -698,7 +698,7 @@ extension SwiftBuilder {
             logAndExit(RuntimeError.buildFailed("Swift build failed with exit code \(buildProcess.terminationStatus)"))
         }
 
-        PolyText.printColor("Build completed successfully!", .green)
+        PolyTerm.printColor("Build completed successfully!", .green)
     }
 
     /// Archives an Xcode project/workspace for release.
@@ -710,7 +710,7 @@ extension SwiftBuilder {
     ///   - marketingVersion: The marketing version to archive the project with.
     ///   - buildNumber: The build number to archive the project with.
     func archiveXcodeProject(containerKind: XcodeContainerKind, containerPath: String, scheme: String, marketingVersion: String, buildNumber: String) throws {
-        PolyText.printColor("Archiving \(scheme) with marketing version \(marketingVersion) and build number \(buildNumber)...", .green)
+        PolyTerm.printColor("Archiving \(scheme) with marketing version \(marketingVersion) and build number \(buildNumber)...", .green)
 
         // First, set the version in the project
         try setProjectVersion(projectPath: containerPath, marketingVersion: marketingVersion, buildNumber: buildNumber)
@@ -740,7 +740,7 @@ extension SwiftBuilder {
             logAndExit(RuntimeError.buildFailed("Archive failed with exit code \(archiveProcess.terminationStatus)"))
         }
 
-        PolyText.printColor("Archive complete! Now you can use Xcode Organizer for distribution.", .green)
+        PolyTerm.printColor("Archive complete! Now you can use Xcode Organizer for distribution.", .green)
     }
 
     /// Sets the version of a project.
@@ -750,7 +750,7 @@ extension SwiftBuilder {
     ///   - marketingVersion: The marketing version to set.
     ///   - buildNumber: The build number to set.
     func setProjectVersion(projectPath: String, marketingVersion: String, buildNumber: String) throws {
-        PolyText.printColor("Setting marketing version to: \(marketingVersion) and build number to: \(buildNumber)", .green)
+        PolyTerm.printColor("Setting marketing version to: \(marketingVersion) and build number to: \(buildNumber)", .green)
 
         // Check if this is an Apple Generic Versioning project
         if try isAppleGenericVersioningProject(projectPath: projectPath) {
@@ -763,14 +763,14 @@ extension SwiftBuilder {
     /// Checks if the project uses Apple Generic Versioning.
     func isAppleGenericVersioningProject(projectPath: String) throws -> Bool {
         let projectFile = "\(projectPath)/project.pbxproj"
-        PolyText.printColor("Looking for project.pbxproj at: \(projectFile)", .cyan)
+        PolyTerm.printColor("Looking for project.pbxproj at: \(projectFile)", .cyan)
         let content = try String(contentsOfFile: projectFile, encoding: .utf8)
         return content.contains("VERSIONING_SYSTEM = \"apple-generic\"")
     }
 
     /// Sets version for Apple Generic Versioning projects by modifying project.pbxproj directly.
     func setVersionForAppleGenericProject(projectPath: String, marketingVersion: String, buildNumber: String) throws {
-        PolyText.printColor("Using Apple Generic Versioning - modifying project.pbxproj directly", .cyan)
+        PolyTerm.printColor("Using Apple Generic Versioning - modifying project.pbxproj directly", .cyan)
 
         let projectFile = "\(projectPath)/project.pbxproj"
         var content = try String(contentsOfFile: projectFile, encoding: .utf8)
@@ -788,12 +788,12 @@ extension SwiftBuilder {
         // Write the updated content back
         try content.write(toFile: projectFile, atomically: true, encoding: .utf8)
 
-        PolyText.printColor("Successfully updated project.pbxproj.", .green)
+        PolyTerm.printColor("Successfully updated project.pbxproj.", .green)
     }
 
     /// Sets version using agvtool for traditional projects.
     func setVersionWithAgvtool(projectPath: String, marketingVersion: String, buildNumber: String) throws {
-        PolyText.printColor("Using agvtool for traditional versioning.", .cyan)
+        PolyTerm.printColor("Using agvtool for traditional versioning.", .cyan)
 
         let projectDir = URL(fileURLWithPath: projectPath).deletingLastPathComponent().path
 
@@ -885,7 +885,7 @@ extension SwiftBuilder {
     ///
     /// - Parameter processName: The name of the process to kill.
     func killExistingProcess(named processName: String) {
-        PolyText.printColor("Killing existing process: \(processName)", .green)
+        PolyTerm.printColor("Killing existing process: \(processName)", .green)
 
         let killProcess = Process()
         killProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pkill")
@@ -919,7 +919,7 @@ extension SwiftBuilder {
                 logAndExit(RuntimeError.buildFailed("Could not find built app/executable for \(projectName)"))
             }
 
-            PolyText.printColor("Running: \(appPath)", .green)
+            PolyTerm.printColor("Running: \(appPath)", .green)
 
             let runProcess = Process()
             runProcess.executableURL = URL(fileURLWithPath: appPath)
@@ -944,13 +944,13 @@ extension SwiftBuilder {
                 if let specifiedTarget = targetName, !executables.contains(specifiedTarget) {
                     logAndExit(RuntimeError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))
                 }
-                PolyText.printColor("Running Swift package executable: \(target)", .green)
+                PolyTerm.printColor("Running Swift package executable: \(target)", .green)
                 try runSwiftPackageTarget(at: path, target: target, configuration: configuration, runArguments: runArguments)
 
             default:
                 if let specifiedTarget = targetName {
                     if executables.contains(specifiedTarget) {
-                        PolyText.printColor("Running Swift package executable: \(specifiedTarget)", .green)
+                        PolyTerm.printColor("Running Swift package executable: \(specifiedTarget)", .green)
                         try runSwiftPackageTarget(at: path, target: specifiedTarget, configuration: configuration, runArguments: runArguments)
                     } else {
                         logAndExit(RuntimeError.buildFailed("Executable '\(specifiedTarget)' not found. Available: \(executables.joined(separator: ", "))"))

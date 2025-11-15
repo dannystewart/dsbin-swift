@@ -95,7 +95,7 @@ struct SwiftConfigs: AsyncParsableCommand {
             if status.fileExists {
                 if config.isTemplate {
                     // Templates should never overwrite existing files
-                    PolyText.printColor("- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists", .cyan)
+                    PolyTerm.printColor("- Skipping \(config.destinationURL.lastPathComponent) as it's a template and the file already exists", .cyan)
                     return
                 } else {
                     // Download the remote content first to compare
@@ -107,28 +107,28 @@ struct SwiftConfigs: AsyncParsableCommand {
 
                     // Show diff if content is different
                     if localContent != remoteContent {
-                        PolyText.printColor("\n--- Changes detected in \(config.destinationURL.lastPathComponent) ---", .yellow)
+                        PolyTerm.printColor("\n--- Changes detected in \(config.destinationURL.lastPathComponent) ---", .yellow)
                         _ = PolyDiff.content(old: localContent, new: remoteContent, filename: config.destinationURL.lastPathComponent)
-                        PolyText.printColor("--- End of changes ---\n", .yellow)
+                        PolyTerm.printColor("--- End of changes ---\n", .yellow)
                     } else {
-                        PolyText.printColor("- No changes needed for \(config.destinationURL.lastPathComponent)", .cyan)
+                        PolyTerm.printColor("- No changes needed for \(config.destinationURL.lastPathComponent)", .cyan)
                         return
                     }
 
                     // Confirm whether we should overwrite the existing file
-                    PolyText.printColor("Update \(config.destinationURL.lastPathComponent)? (y/N): ", .yellow, terminator: "")
+                    PolyTerm.printColor("Update \(config.destinationURL.lastPathComponent)? (y/N): ", .yellow, terminator: "")
 
                     // Read single character without requiring Enter
                     let response = PolyTerm.readSingleChar()
                     print()
                     if response.lowercased() != "y" {
-                        PolyText.printColor("- Skipping \(config.destinationURL.lastPathComponent)", .cyan)
+                        PolyTerm.printColor("- Skipping \(config.destinationURL.lastPathComponent)", .cyan)
                         return
                     }
 
                     // Write the updated content
                     try remoteData.write(to: config.destinationURL)
-                    PolyText.printColor("✓ Updated \(config.destinationURL.lastPathComponent)", .green)
+                    PolyTerm.printColor("✓ Updated \(config.destinationURL.lastPathComponent)", .green)
                     return
                 }
             }
@@ -136,7 +136,7 @@ struct SwiftConfigs: AsyncParsableCommand {
             // Download the file from the remote source for new files
             let (data, _) = try await URLSession.shared.data(from: config.sourceURL)
             try data.write(to: config.destinationURL)
-            PolyText.printColor("✓ Downloaded \(config.destinationURL.lastPathComponent)", .green)
+            PolyTerm.printColor("✓ Downloaded \(config.destinationURL.lastPathComponent)", .green)
         }
     }
 
