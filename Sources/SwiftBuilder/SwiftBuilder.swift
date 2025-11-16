@@ -685,7 +685,7 @@ extension SwiftBuilder {
         let buildProcess = Process()
         buildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
         buildProcess.arguments = ["build", "-c", swiftpmConfig]
-        buildProcess.currentDirectoryPath = packagePath
+        buildProcess.currentDirectoryURL = URL(fileURLWithPath: packagePath)
 
         // Stream output directly
         buildProcess.standardOutput = FileHandle.standardOutput
@@ -801,7 +801,7 @@ extension SwiftBuilder {
         let setVersionProcess = Process()
         setVersionProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         setVersionProcess.arguments = ["agvtool", "new-marketing-version", marketingVersion]
-        setVersionProcess.currentDirectoryPath = projectDir
+        setVersionProcess.currentDirectoryURL = URL(fileURLWithPath: projectDir)
 
         try setVersionProcess.run()
         setVersionProcess.waitUntilExit()
@@ -814,7 +814,7 @@ extension SwiftBuilder {
         let setBuildProcess = Process()
         setBuildProcess.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         setBuildProcess.arguments = ["agvtool", "new-version", "-all", buildNumber]
-        setBuildProcess.currentDirectoryPath = projectDir
+        setBuildProcess.currentDirectoryURL = URL(fileURLWithPath: projectDir)
 
         try setBuildProcess.run()
         setBuildProcess.waitUntilExit()
@@ -1006,7 +1006,7 @@ extension SwiftBuilder {
         let dump = Process()
         dump.executableURL = URL(fileURLWithPath: "/usr/bin/swift")
         dump.arguments = ["package", "dump-package"]
-        dump.currentDirectoryPath = path
+        dump.currentDirectoryURL = URL(fileURLWithPath: path)
 
         let outPipe = Pipe()
         dump.standardOutput = outPipe
@@ -1107,7 +1107,7 @@ extension SwiftBuilder {
             args.append(contentsOf: runArguments)
         }
         runProcess.arguments = args
-        runProcess.currentDirectoryPath = path
+        runProcess.currentDirectoryURL = URL(fileURLWithPath: path)
 
         runProcess.standardOutput = FileHandle.standardOutput
         runProcess.standardError = FileHandle.standardError
