@@ -1,6 +1,11 @@
 import ArgumentParser
 import Foundation
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
 import PolyKit
+
+// MARK: - SwiftConfigs
 
 @main
 struct SwiftConfigs: AsyncParsableCommand {
