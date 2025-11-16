@@ -1,5 +1,9 @@
 import ArgumentParser
-import CommonCrypto
+#if canImport(CryptoKit)
+    import CryptoKit
+#elseif canImport(Crypto)
+    import Crypto
+#endif
 import Foundation
 import PolyKit
 
@@ -525,12 +529,8 @@ extension SwiftBuilder {
         let fileURL = URL(fileURLWithPath: filePath)
         let data = try Data(contentsOf: fileURL)
 
-        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
-        _ = data.withUnsafeBytes { bytes in
-            CC_SHA256(bytes.bindMemory(to: UInt8.self).baseAddress, CC_LONG(data.count), &hash)
-        }
-
-        return hash.map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: data)
+        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     /// Installs an app bundle to /Applications, overwriting any existing version.
