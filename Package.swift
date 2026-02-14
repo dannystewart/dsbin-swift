@@ -6,8 +6,6 @@ let package = Package(
     platforms: [.macOS(.v26)],
     products: [
         .executable(name: "swbuild", targets: ["SwiftBuilder"]),
-        .executable(name: "swcompare", targets: ["SwiftCompare"]),
-        .executable(name: "swconfigs", targets: ["SwiftConfigs"]),
         .executable(name: "swdeploy", targets: ["SwiftDeploy"]),
     ],
     dependencies: [
@@ -24,23 +22,6 @@ let package = Package(
                 .product(name: "Crypto", package: "swift-crypto"),
             ],
             path: "Sources/SwiftBuilder",
-        ),
-        .executableTarget(
-            name: "SwiftCompare",
-            dependencies: [
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "PolyKit", package: "polykit-swift"),
-            ],
-            path: "Sources/SwiftCompare",
-        ),
-        .executableTarget(
-            name: "SwiftConfigs",
-            dependencies: [
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                .product(name: "PolyKit", package: "polykit-swift"),
-            ],
-            path: "Sources/SwiftConfigs",
-            exclude: ["Templates"],
         ),
         .executableTarget(
             name: "SwiftDeploy",
