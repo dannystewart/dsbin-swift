@@ -10,14 +10,14 @@
 --call-site-paren balanced
 --category-mark "MARK: %c"
 --class-threshold 0
---closing-paren same-line
+--closing-paren balanced
 --closure-void remove
 --complex-attributes preserve
 --computed-var-attributes preserve
 --conditional-assignment after-property
 --conflict-markers reject
 --date-format system
---decimal-grouping none
+--decimal-grouping 3,6
 --default-test-suite-attributes
 --doc-comments before-declarations
 --else-position same-line
@@ -46,14 +46,14 @@
 --indent 4
 --indent-case false
 --indent-strings false
---inferred-types exclude-cond-exprs
+--inferred-types always
 --init-coder-nil false
 --language-mode 0
 --lifecycle
 --line-after-marks true
 --line-between-guards false
 --linebreaks lf
---mark-categories true
+--mark-categories false
 --mark-class-threshold 0
 --mark-enum-threshold 0
 --mark-extension-threshold 0
@@ -64,7 +64,7 @@
 --max-width none
 --modifier-order
 --never-trailing
---nil-init remove
+--nil-init insert
 --no-space-operators
 --no-wrap-operators
 --non-complex-attributes
@@ -73,6 +73,7 @@
 --organization-mode type
 --organize-types actor,class,enum,struct
 --pattern-let hoist
+--prefer-synthesized-init-for-internal-structs View,ViewModifier
 --preserve-acronyms
 --preserve-decls
 --preserved-property-types Package
@@ -80,7 +81,7 @@
 --ranges spaced
 --redundant-async tests-only
 --redundant-throws tests-only
---self remove
+--self insert
 --self-required
 --semicolons inline-only
 --short-optionals except-properties
@@ -92,7 +93,7 @@
 --stored-var-attributes preserve
 --strip-unused-args always
 --struct-threshold 0
---swift-version 6.2
+--swift-version 6.3
 --tab-width unspecified
 --throw-capturing
 --timezone system
@@ -110,7 +111,7 @@
 --visibility-marks
 --visibility-order
 --void-type Void
---wrap-arguments before-first
+--wrap-arguments default
 --wrap-collections before-first
 --wrap-conditions before-first
 --wrap-effects if-multiline
@@ -123,4 +124,5 @@
 --xcode-indentation disabled
 --xctest-symbols
 --yoda-swap always
---enable blankLineAfterSwitchCase,blankLinesBetweenImports,blockComments,docComments,emptyExtensions,environmentEntry,markTypes,organizeDeclarations,privateStateVariables,propertyTypes,redundantAsync,redundantMemberwiseInit,redundantProperty,redundantThrows,singlePropertyPerLine,unusedPrivateDeclarations,wrapEnumCases
+--disable redundantReturn,wrapFunctionBodies,wrapPropertyBodies
+--enable blankLineAfterSwitchCase,blockComments,markTypes,organizeDeclarations,preferSwiftTesting,privateStateVariables,propertyTypes,singlePropertyPerLine,unusedPrivateDeclarations,wrapEnumCases,wrapMultilineFunctionChains
